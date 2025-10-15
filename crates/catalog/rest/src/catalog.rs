@@ -50,6 +50,8 @@ use crate::types::{
 pub const REST_CATALOG_PROP_URI: &str = "uri";
 /// REST catalog warehouse location
 pub const REST_CATALOG_PROP_WAREHOUSE: &str = "warehouse";
+/// REST catalog sigv4 signing name
+pub const SIGV4_SIGNING_NAME: &str = "sigv4_signing_name";
 
 const ICEBERG_REST_SPEC_VERSION: &str = "0.14.1";
 const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -67,6 +69,7 @@ impl Default for RestCatalogBuilder {
             warehouse: None,
             props: HashMap::new(),
             client: None,
+            aws_config: None,
         })
     }
 }
@@ -124,6 +127,12 @@ impl RestCatalogBuilder {
         self.0.client = Some(client);
         self
     }
+
+    /// Configures the catalog with a custom AWS SDK config.
+    pub fn with_aws_config(mut self, aws_config: aws_types::SdkConfig) -> Self {
+        self.0.aws_config = Some(aws_config);
+        self
+    }
 }
 
 /// Rest catalog configuration.
@@ -142,6 +151,9 @@ pub(crate) struct RestCatalogConfig {
 
     #[builder(default)]
     client: Option<Client>,
+
+    #[builder(default)]
+    aws_config: Option<aws_types::SdkConfig>,
 }
 
 impl RestCatalogConfig {
@@ -305,6 +317,16 @@ impl RestCatalogConfig {
 
         self.props = props;
         self
+    }
+
+    /// Get the aws config from the config.
+    pub(crate) fn aws_config(&self) -> Option<aws_types::SdkConfig> {
+        self.aws_config.clone()
+    }
+
+    /// Get the sigv4 signing name from the config.
+    pub(crate) fn sigv4_signing_name(&self) -> Option<String> {
+        self.props.get(SIGV4_SIGNING_NAME).cloned()
     }
 }
 

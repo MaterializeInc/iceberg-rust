@@ -15,9 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
+use std::time::SystemTime;
 
+use aws_credential_types::provider::ProvideCredentials;
+use aws_sigv4::http_request::{
+    SignableBody, SignableRequest, SigningParams, SigningSettings, sign,
+};
+use aws_sigv4::sign::v4;
 use http::StatusCode;
 use iceberg::{Error, ErrorKind, Result};
 use reqwest::header::HeaderMap;
@@ -43,6 +49,10 @@ pub(crate) struct HttpClient {
     extra_headers: HeaderMap,
     /// Extra oauth parameters to be added to each authentication request.
     extra_oauth_params: HashMap<String, String>,
+    /// Optional AWS Client to be used for signing requests.
+    aws_config: Option<aws_types::SdkConfig>,
+    /// The sigv4 signing name to be used for signing requests.
+    sigv4_signing_name: Option<String>,
 }
 
 impl Debug for HttpClient {
@@ -65,6 +75,8 @@ impl HttpClient {
             credential: cfg.credential(),
             extra_headers,
             extra_oauth_params: cfg.extra_oauth_params(),
+            aws_config: cfg.aws_config(),
+            sigv4_signing_name: cfg.sigv4_signing_name(),
         })
     }
 
@@ -92,6 +104,8 @@ impl HttpClient {
             } else {
                 self.extra_oauth_params
             },
+            aws_config: cfg.aws_config().or(self.aws_config),
+            sigv4_signing_name: cfg.sigv4_signing_name().or(self.sigv4_signing_name),
         })
     }
 
@@ -193,6 +207,126 @@ impl HttpClient {
         Ok(())
     }
 
+    /// Authenticate the request by signing it with AWS SigV4.
+    async fn authenticate_sigv4(&self, req: &mut Request) -> Result<()> {
+        if let Some(aws_config) = &self.aws_config {
+            let region = aws_config
+                .region()
+                .ok_or_else(|| Error::new(ErrorKind::DataInvalid, "AWS region is not set"))?
+                .as_ref();
+
+            let credentials = aws_config
+                .credentials_provider()
+                .ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::DataInvalid,
+                        "AWS credentials provider is not set",
+                    )
+                })?
+                .provide_credentials()
+                .await
+                .map_err(|e| {
+                    Error::new(ErrorKind::DataInvalid, "Failed to provide AWS credentials")
+                        .with_source(e)
+                })?;
+
+            let identity = credentials.into();
+
+            let signing_name = self
+                .sigv4_signing_name
+                .as_ref()
+                .map(|s| s.as_str())
+                .unwrap_or("s3tables");
+
+            let signing_params: SigningParams = v4::SigningParams::builder()
+                .identity(&identity)
+                .region(region)
+                .name(signing_name)
+                .time(SystemTime::now())
+                .settings(SigningSettings::default())
+                .build()
+                .map_err(|e| {
+                    Error::new(ErrorKind::DataInvalid, "Failed to create signing params")
+                        .with_source(e)
+                })?
+                .into();
+
+            let uri = req.url().clone();
+            let headers: Vec<_> = req
+                .headers()
+                .iter()
+                .map(|(k, v)| {
+                    v.to_str()
+                        .map(|v_str| (k.to_string(), v_str.to_string()))
+                        .map_err(|e| {
+                            Error::new(ErrorKind::DataInvalid, "Invalid UTF-8 in header value")
+                                .with_source(e)
+                        })
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            let body = req.body().as_ref().and_then(|b| b.as_bytes());
+            let body = match body {
+                Some(body) => SignableBody::Bytes(body),
+                None => SignableBody::Bytes(&[]),
+            };
+
+            let signable = SignableRequest::new(
+                req.method().as_str(),
+                uri.as_ref(),
+                headers.iter().map(|(k, v)| (k.as_str(), v.as_str())),
+                body,
+            )
+            .map_err(|e| {
+                Error::new(ErrorKind::DataInvalid, "Failed to create signable request")
+                    .with_source(e)
+            })?;
+
+            let (instructions, _signature) = sign(signable, &signing_params)
+                .map_err(|e| {
+                    Error::new(ErrorKind::DataInvalid, "Failed to sign request").with_source(e)
+                })?
+                .into_parts();
+
+            let (new_headers, new_query) = instructions.into_parts();
+
+            for header in new_headers {
+                req.headers_mut().insert(
+                    header.name(),
+                    header.value().parse().map_err(|e| {
+                        Error::new(ErrorKind::DataInvalid, "Failed to parse header value")
+                            .with_source(e)
+                    })?,
+                );
+            }
+
+            if !new_query.is_empty() {
+                // Merge existing query params with newly signed params, overwriting any
+                // existing keys that appear in the signed output while preserving others.
+                let replace_keys: HashSet<&str> = new_query.iter().map(|(k, _)| *k).collect();
+                let preserved: Vec<(String, String)> = req
+                    .url()
+                    .query_pairs()
+                    .filter(|(k, _)| !replace_keys.contains(k.as_ref()))
+                    .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                    .collect();
+
+                let url = req.url_mut();
+                {
+                    let mut qp = url.query_pairs_mut();
+                    qp.clear();
+                    for (k, v) in preserved {
+                        qp.append_pair(&k, &v);
+                    }
+                    for (k, v) in new_query {
+                        qp.append_pair(k, &v);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Authenticate the request by filling token.
     ///
     /// - If neither token nor credential is provided, this method will do nothing.
@@ -202,7 +336,7 @@ impl HttpClient {
     /// # TODO
     ///
     /// Support refreshing token while needed.
-    async fn authenticate(&self, req: &mut Request) -> Result<()> {
+    async fn authenticate_oauth(&self, req: &mut Request) -> Result<()> {
         // Clone the token from lock without holding the lock for entire function.
         let token = self.token.lock().await.clone();
 
@@ -239,6 +373,19 @@ impl HttpClient {
                 .with_source(e)
             })?,
         );
+
+        Ok(())
+    }
+
+    /// If `aws_config` is set, this method will use it to sign the request.
+    /// If `credential` is set, this method will use it to authenticate the request.
+    /// If neither is set, this method will do nothing.
+    async fn authenticate(&self, req: &mut Request) -> Result<()> {
+        if self.aws_config.is_some() {
+            return self.authenticate_sigv4(req).await;
+        } else if self.credential.is_some() {
+            return self.authenticate_oauth(req).await;
+        }
 
         Ok(())
     }
