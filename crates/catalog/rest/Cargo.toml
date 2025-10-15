@@ -30,6 +30,9 @@ repository = { workspace = true }
 
 [dependencies]
 async-trait = { workspace = true }
+aws-types = { workspace = true }
+aws-sigv4 = { workspace = true }
+aws-credential-types = { workspace = true }
 chrono = { workspace = true }
 http = { workspace = true }
 iceberg = { workspace = true }
