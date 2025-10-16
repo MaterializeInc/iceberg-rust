@@ -387,6 +387,7 @@
 //! ```
 
 pub mod base_writer;
+pub mod combined_writer;
 pub mod file_writer;
 pub mod partitioning;
 
