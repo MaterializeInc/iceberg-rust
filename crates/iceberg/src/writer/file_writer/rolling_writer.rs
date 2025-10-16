@@ -20,7 +20,7 @@ use std::fmt::{Debug, Formatter};
 use arrow_array::RecordBatch;
 
 use crate::io::{FileIO, OutputFile};
-use crate::spec::{DataFileBuilder, PartitionKey, TableProperties};
+use crate::spec::{DataFileBuilder, PartitionKey, TableProperties, SchemaRef};
 use crate::writer::CurrentFileStatus;
 use crate::writer::file_writer::location_generator::{FileNameGenerator, LocationGenerator};
 use crate::writer::file_writer::{FileWriter, FileWriterBuilder};
@@ -252,6 +252,10 @@ impl<B: FileWriterBuilder, L: LocationGenerator, F: FileNameGenerator> CurrentFi
 
     fn current_written_size(&self) -> usize {
         self.inner.as_ref().unwrap().current_written_size()
+    }
+
+    fn current_schema(&self) -> SchemaRef {
+        self.inner.as_ref().unwrap().current_schema()
     }
 }
 

@@ -385,13 +385,14 @@
 //! ```
 
 pub mod base_writer;
+pub mod combined_writer;
 pub mod file_writer;
 pub mod partitioning;
 
 use arrow_array::RecordBatch;
 
 use crate::Result;
-use crate::spec::{DataFile, PartitionKey};
+use crate::spec::{DataFile, PartitionKey, SchemaRef};
 
 type DefaultInput = RecordBatch;
 type DefaultOutput = Vec<DataFile>;
@@ -426,6 +427,8 @@ pub trait CurrentFileStatus {
     fn current_row_num(&self) -> usize;
     /// Get the current file written size.
     fn current_written_size(&self) -> usize;
+    /// Get the current schema used by the writer.
+    fn current_schema(&self) -> SchemaRef;
 }
 
 #[cfg(test)]
