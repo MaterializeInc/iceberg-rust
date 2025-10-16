@@ -99,6 +99,10 @@ impl<B: FileWriterBuilder> CurrentFileStatus for DataFileWriter<B> {
     fn current_written_size(&self) -> usize {
         self.inner_writer.as_ref().unwrap().current_written_size()
     }
+
+    fn current_schema(&self) -> crate::spec::SchemaRef {
+        self.inner_writer.as_ref().unwrap().current_schema()
+    }
 }
 
 #[cfg(test)]
