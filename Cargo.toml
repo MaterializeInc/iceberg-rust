@@ -53,9 +53,10 @@ arrow-select = { version = "55.1" }
 arrow-string = { version = "55.1" }
 as-any = "0.3.2"
 async-trait = "0.1.88"
-aws-config = "1.8.1"
-aws-sdk-glue = "1.39"
-aws-sdk-s3tables = "1.28.0"
+aws-config = { version = "1.8.1", default-features = false }
+aws-sdk-glue = { version = "1.39", default-features = false }
+aws-sdk-s3tables = { version = "1.28.0", default-features = false }
+aws-smithy-types = "1.3.4"
 aws-credential-types = "1.2.7"
 aws-sigv4 = "1.3.4"
 aws-types = "1.3.7"
@@ -96,7 +97,7 @@ motore-macros = "0.4.3"
 murmur3 = "0.5.2"
 num-bigint = "0.4.6"
 once_cell = "1.20"
-opendal = "0.54.0"
+opendal = {version = "0.54.0", default-features = false, features = ["executors-tokio", "services-memory"]}
 ordered-float = "4"
 parquet = "55.1"
 pilota = "0.11.10"
@@ -104,7 +105,7 @@ port_scanner = "0.1.5"
 pretty_assertions = "1.4"
 rand = "0.8.5"
 regex = "1.10.5"
-reqwest = { version = "0.12.12", default-features = false, features = ["json"] }
+reqwest = { version = "0.12.12", default-features = false, features = ["json", "native-tls"] }
 roaring = { version = "0.11" }
 rust_decimal = "1.37.1"
 serde = { version = "1.0.219", features = ["rc"] }
