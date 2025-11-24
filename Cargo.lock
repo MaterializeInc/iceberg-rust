@@ -3474,6 +3474,9 @@ name = "iceberg-catalog-rest"
 version = "0.7.0"
 dependencies = [
  "async-trait",
+ "aws-credential-types",
+ "aws-sigv4",
+ "aws-types",
  "chrono",
  "ctor",
  "http 1.4.0",
