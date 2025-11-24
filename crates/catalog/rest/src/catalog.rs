@@ -768,7 +768,7 @@ impl Catalog for RestCatalog {
             }
             StatusCode::NOT_FOUND => {
                 return Err(Error::new(
-                    ErrorKind::Unexpected,
+                    ErrorKind::TableNotFound,
                     "Tried to load a table that does not exist",
                 ));
             }
