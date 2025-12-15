@@ -1,0 +1,677 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>API - Iceberg Rust</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded "><a href="introduction.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="install.html">Install</a></li><li class="chapter-item expanded "><a href="download.html">Download</a></li><li class="chapter-item expanded "><a href="api.html" class="active">API</a></li><li class="chapter-item expanded affix "><li class="part-title">Developer Guide</li><li class="chapter-item expanded "><a href="CONTRIBUTING.html">Contributing</a></li><li class="chapter-item expanded "><a href="release.html">Release</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference</li><li class="chapter-item expanded "><a href="reference/podman.html">Using Podman instead of Docker</a></li><li class="chapter-item expanded "><a href="reference/orbstack.html">OrbStack as a docker alternative</a></li><li class="chapter-item expanded "><a href="reference/setup_gpg.html">Setup GPG key</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Iceberg Rust</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/apache/iceberg-rust" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/apache/iceberg-rust/edit/main/website/src/api.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one
+  ~ or more contributor license agreements.  See the NOTICE file
+  ~ distributed with this work for additional information
+  ~ regarding copyright ownership.  The ASF licenses this file
+  ~ to you under the Apache License, Version 2.0 (the
+  ~ "License"); you may not use this file except in compliance
+  ~ with the License.  You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+-->
+<h1 id="catalog"><a class="header" href="#catalog">Catalog</a></h1>
+<p><code>Catalog</code> is the entry point for accessing iceberg tables. You can use a catalog to:</p>
+<ul>
+<li>Create and list namespaces.</li>
+<li>Create, load, and drop tables</li>
+</ul>
+<p>There is support for the following catalogs:</p>
+<div class="table-wrapper"><table><thead><tr><th>Catalog</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>Rest</code></td><td>the Iceberg REST catalog</td></tr>
+<tr><td><code>Glue</code></td><td>the AWS Glue Data Catalog</td></tr>
+<tr><td><code>Memory</code></td><td>a memory-based Catalog</td></tr>
+<tr><td><code>HMS</code></td><td>Apache Iceberg HiveMetaStore catalog</td></tr>
+<tr><td><code>S3Tables</code></td><td>AWS S3 Tables</td></tr>
+<tr><td><code>SQL</code></td><td>SQL-based catalog</td></tr>
+</tbody></table>
+</div>
+<p>Not all catalog implementations are complete.</p>
+<h2 id="restcatalog"><a class="header" href="#restcatalog"><code>RestCatalog</code></a></h2>
+<p>Here is an example of how to create a <code>RestCatalog</code>:</p>
+<pre><code class="language-rust no_run noplayground"><span class="boring">// Licensed to the Apache Software Foundation (ASF) under one
+</span><span class="boring">// or more contributor license agreements.  See the NOTICE file
+</span><span class="boring">// distributed with this work for additional information
+</span><span class="boring">// regarding copyright ownership.  The ASF licenses this file
+</span><span class="boring">// to you under the Apache License, Version 2.0 (the
+</span><span class="boring">// &quot;License&quot;); you may not use this file except in compliance
+</span><span class="boring">// with the License.  You may obtain a copy of the License at
+</span><span class="boring">//
+</span><span class="boring">//   http://www.apache.org/licenses/LICENSE-2.0
+</span><span class="boring">//
+</span><span class="boring">// Unless required by applicable law or agreed to in writing,
+</span><span class="boring">// software distributed under the License is distributed on an
+</span><span class="boring">// &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+</span><span class="boring">// KIND, either express or implied.  See the License for the
+</span><span class="boring">// specific language governing permissions and limitations
+</span><span class="boring">// under the License.
+</span><span class="boring">
+</span><span class="boring">use std::collections::HashMap;
+</span><span class="boring">
+</span><span class="boring">use iceberg::{Catalog, CatalogBuilder, NamespaceIdent};
+</span><span class="boring">use iceberg_catalog_rest::{REST_CATALOG_PROP_URI, RestCatalogBuilder};
+</span><span class="boring">
+</span><span class="boring">static REST_URI: &amp;str = &quot;http://localhost:8181&quot;;
+</span><span class="boring">
+</span><span class="boring">/// This is a simple example that demonstrates how to use [`RestCatalog`] to create namespaces.
+</span><span class="boring">///
+</span><span class="boring">/// The demo creates a namespace and prints it out.
+</span><span class="boring">///
+</span><span class="boring">/// A running instance of the iceberg-rest catalog on port 8181 is required. You can find how to run
+</span><span class="boring">/// the iceberg-rest catalog with `docker compose` in the official
+</span><span class="boring">/// [quickstart documentation](https://iceberg.apache.org/spark-quickstart/).
+</span><span class="boring">#[tokio::main]
+</span><span class="boring">async fn main() {
+</span>    // Create the REST iceberg catalog.
+    let catalog = RestCatalogBuilder::default()
+        .load(
+            &quot;rest&quot;,
+            HashMap::from([(REST_CATALOG_PROP_URI.to_string(), REST_URI.to_string())]),
+        )
+        .await
+        .unwrap();
+<span class="boring">
+</span><span class="boring">    // List all namespaces already in the catalog.
+</span><span class="boring">    let existing_namespaces = catalog.list_namespaces(None).await.unwrap();
+</span><span class="boring">    println!(&quot;Namespaces alreading in the existing catalog: {existing_namespaces:?}&quot;);
+</span><span class="boring">
+</span><span class="boring">    // Create a new namespace identifier.
+</span><span class="boring">    let namespace_ident =
+</span><span class="boring">        NamespaceIdent::from_vec(vec![&quot;ns1&quot;.to_string(), &quot;ns11&quot;.to_string()]).unwrap();
+</span><span class="boring">
+</span><span class="boring">    // Drop the namespace if it already exists.
+</span><span class="boring">    if catalog.namespace_exists(&amp;namespace_ident).await.unwrap() {
+</span><span class="boring">        println!(&quot;Namespace already exists, dropping now.&quot;,);
+</span><span class="boring">        catalog.drop_namespace(&amp;namespace_ident).await.unwrap();
+</span><span class="boring">    }
+</span><span class="boring">
+</span><span class="boring">    // Create the new namespace in the catalog.
+</span><span class="boring">    let _created_namespace = catalog
+</span><span class="boring">        .create_namespace(
+</span><span class="boring">            &amp;namespace_ident,
+</span><span class="boring">            HashMap::from([(&quot;key1&quot;.to_string(), &quot;value1&quot;.to_string())]),
+</span><span class="boring">        )
+</span><span class="boring">        .await
+</span><span class="boring">        .unwrap();
+</span><span class="boring">    println!(&quot;Namespace {namespace_ident:?} created!&quot;);
+</span><span class="boring">
+</span><span class="boring">    let loaded_namespace = catalog.get_namespace(&amp;namespace_ident).await.unwrap();
+</span><span class="boring">    println!(&quot;Namespace loaded!\n\nNamespace: {loaded_namespace:#?}&quot;,);
+</span><span class="boring">}</span></code></pre>
+<p>You can run following code to list all root namespaces:</p>
+<pre><code class="language-rust no_run noplayground"><span class="boring">// Licensed to the Apache Software Foundation (ASF) under one
+</span><span class="boring">// or more contributor license agreements.  See the NOTICE file
+</span><span class="boring">// distributed with this work for additional information
+</span><span class="boring">// regarding copyright ownership.  The ASF licenses this file
+</span><span class="boring">// to you under the Apache License, Version 2.0 (the
+</span><span class="boring">// &quot;License&quot;); you may not use this file except in compliance
+</span><span class="boring">// with the License.  You may obtain a copy of the License at
+</span><span class="boring">//
+</span><span class="boring">//   http://www.apache.org/licenses/LICENSE-2.0
+</span><span class="boring">//
+</span><span class="boring">// Unless required by applicable law or agreed to in writing,
+</span><span class="boring">// software distributed under the License is distributed on an
+</span><span class="boring">// &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+</span><span class="boring">// KIND, either express or implied.  See the License for the
+</span><span class="boring">// specific language governing permissions and limitations
+</span><span class="boring">// under the License.
+</span><span class="boring">
+</span><span class="boring">use std::collections::HashMap;
+</span><span class="boring">
+</span><span class="boring">use iceberg::{Catalog, CatalogBuilder, NamespaceIdent};
+</span><span class="boring">use iceberg_catalog_rest::{REST_CATALOG_PROP_URI, RestCatalogBuilder};
+</span><span class="boring">
+</span><span class="boring">static REST_URI: &amp;str = &quot;http://localhost:8181&quot;;
+</span><span class="boring">
+</span><span class="boring">/// This is a simple example that demonstrates how to use [`RestCatalog`] to create namespaces.
+</span><span class="boring">///
+</span><span class="boring">/// The demo creates a namespace and prints it out.
+</span><span class="boring">///
+</span><span class="boring">/// A running instance of the iceberg-rest catalog on port 8181 is required. You can find how to run
+</span><span class="boring">/// the iceberg-rest catalog with `docker compose` in the official
+</span><span class="boring">/// [quickstart documentation](https://iceberg.apache.org/spark-quickstart/).
+</span><span class="boring">#[tokio::main]
+</span><span class="boring">async fn main() {
+</span><span class="boring">    // Create the REST iceberg catalog.
+</span><span class="boring">    let catalog = RestCatalogBuilder::default()
+</span><span class="boring">        .load(
+</span><span class="boring">            &quot;rest&quot;,
+</span><span class="boring">            HashMap::from([(REST_CATALOG_PROP_URI.to_string(), REST_URI.to_string())]),
+</span><span class="boring">        )
+</span><span class="boring">        .await
+</span><span class="boring">        .unwrap();
+</span><span class="boring">
+</span>    // List all namespaces already in the catalog.
+    let existing_namespaces = catalog.list_namespaces(None).await.unwrap();
+    println!(&quot;Namespaces alreading in the existing catalog: {existing_namespaces:?}&quot;);
+<span class="boring">
+</span><span class="boring">    // Create a new namespace identifier.
+</span><span class="boring">    let namespace_ident =
+</span><span class="boring">        NamespaceIdent::from_vec(vec![&quot;ns1&quot;.to_string(), &quot;ns11&quot;.to_string()]).unwrap();
+</span><span class="boring">
+</span><span class="boring">    // Drop the namespace if it already exists.
+</span><span class="boring">    if catalog.namespace_exists(&amp;namespace_ident).await.unwrap() {
+</span><span class="boring">        println!(&quot;Namespace already exists, dropping now.&quot;,);
+</span><span class="boring">        catalog.drop_namespace(&amp;namespace_ident).await.unwrap();
+</span><span class="boring">    }
+</span><span class="boring">
+</span><span class="boring">    // Create the new namespace in the catalog.
+</span><span class="boring">    let _created_namespace = catalog
+</span><span class="boring">        .create_namespace(
+</span><span class="boring">            &amp;namespace_ident,
+</span><span class="boring">            HashMap::from([(&quot;key1&quot;.to_string(), &quot;value1&quot;.to_string())]),
+</span><span class="boring">        )
+</span><span class="boring">        .await
+</span><span class="boring">        .unwrap();
+</span><span class="boring">    println!(&quot;Namespace {namespace_ident:?} created!&quot;);
+</span><span class="boring">
+</span><span class="boring">    let loaded_namespace = catalog.get_namespace(&amp;namespace_ident).await.unwrap();
+</span><span class="boring">    println!(&quot;Namespace loaded!\n\nNamespace: {loaded_namespace:#?}&quot;,);
+</span><span class="boring">}</span></code></pre>
+<p>Then you can run following code to create namespace:</p>
+<pre><code class="language-rust no_run noplayground"><span class="boring">// Licensed to the Apache Software Foundation (ASF) under one
+</span><span class="boring">// or more contributor license agreements.  See the NOTICE file
+</span><span class="boring">// distributed with this work for additional information
+</span><span class="boring">// regarding copyright ownership.  The ASF licenses this file
+</span><span class="boring">// to you under the Apache License, Version 2.0 (the
+</span><span class="boring">// &quot;License&quot;); you may not use this file except in compliance
+</span><span class="boring">// with the License.  You may obtain a copy of the License at
+</span><span class="boring">//
+</span><span class="boring">//   http://www.apache.org/licenses/LICENSE-2.0
+</span><span class="boring">//
+</span><span class="boring">// Unless required by applicable law or agreed to in writing,
+</span><span class="boring">// software distributed under the License is distributed on an
+</span><span class="boring">// &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+</span><span class="boring">// KIND, either express or implied.  See the License for the
+</span><span class="boring">// specific language governing permissions and limitations
+</span><span class="boring">// under the License.
+</span><span class="boring">
+</span><span class="boring">use std::collections::HashMap;
+</span><span class="boring">
+</span><span class="boring">use iceberg::{Catalog, CatalogBuilder, NamespaceIdent};
+</span><span class="boring">use iceberg_catalog_rest::{REST_CATALOG_PROP_URI, RestCatalogBuilder};
+</span><span class="boring">
+</span><span class="boring">static REST_URI: &amp;str = &quot;http://localhost:8181&quot;;
+</span><span class="boring">
+</span><span class="boring">/// This is a simple example that demonstrates how to use [`RestCatalog`] to create namespaces.
+</span><span class="boring">///
+</span><span class="boring">/// The demo creates a namespace and prints it out.
+</span><span class="boring">///
+</span><span class="boring">/// A running instance of the iceberg-rest catalog on port 8181 is required. You can find how to run
+</span><span class="boring">/// the iceberg-rest catalog with `docker compose` in the official
+</span><span class="boring">/// [quickstart documentation](https://iceberg.apache.org/spark-quickstart/).
+</span><span class="boring">#[tokio::main]
+</span><span class="boring">async fn main() {
+</span><span class="boring">    // Create the REST iceberg catalog.
+</span><span class="boring">    let catalog = RestCatalogBuilder::default()
+</span><span class="boring">        .load(
+</span><span class="boring">            &quot;rest&quot;,
+</span><span class="boring">            HashMap::from([(REST_CATALOG_PROP_URI.to_string(), REST_URI.to_string())]),
+</span><span class="boring">        )
+</span><span class="boring">        .await
+</span><span class="boring">        .unwrap();
+</span><span class="boring">
+</span><span class="boring">    // List all namespaces already in the catalog.
+</span><span class="boring">    let existing_namespaces = catalog.list_namespaces(None).await.unwrap();
+</span><span class="boring">    println!(&quot;Namespaces alreading in the existing catalog: {existing_namespaces:?}&quot;);
+</span><span class="boring">
+</span>    // Create a new namespace identifier.
+    let namespace_ident =
+        NamespaceIdent::from_vec(vec![&quot;ns1&quot;.to_string(), &quot;ns11&quot;.to_string()]).unwrap();
+
+    // Drop the namespace if it already exists.
+    if catalog.namespace_exists(&amp;namespace_ident).await.unwrap() {
+        println!(&quot;Namespace already exists, dropping now.&quot;,);
+        catalog.drop_namespace(&amp;namespace_ident).await.unwrap();
+    }
+
+    // Create the new namespace in the catalog.
+    let _created_namespace = catalog
+        .create_namespace(
+            &amp;namespace_ident,
+            HashMap::from([(&quot;key1&quot;.to_string(), &quot;value1&quot;.to_string())]),
+        )
+        .await
+        .unwrap();
+    println!(&quot;Namespace {namespace_ident:?} created!&quot;);
+
+    let loaded_namespace = catalog.get_namespace(&amp;namespace_ident).await.unwrap();
+    println!(&quot;Namespace loaded!\n\nNamespace: {loaded_namespace:#?}&quot;,);
+<span class="boring">}</span></code></pre>
+<h1 id="table"><a class="header" href="#table">Table</a></h1>
+<p>After creating <code>Catalog</code>, we can manipulate tables through <code>Catalog</code>.</p>
+<p>You can use following code to create a table:</p>
+<pre><code class="language-rust no_run noplayground"><span class="boring">// Licensed to the Apache Software Foundation (ASF) under one
+</span><span class="boring">// or more contributor license agreements.  See the NOTICE file
+</span><span class="boring">// distributed with this work for additional information
+</span><span class="boring">// regarding copyright ownership.  The ASF licenses this file
+</span><span class="boring">// to you under the Apache License, Version 2.0 (the
+</span><span class="boring">// &quot;License&quot;); you may not use this file except in compliance
+</span><span class="boring">// with the License.  You may obtain a copy of the License at
+</span><span class="boring">//
+</span><span class="boring">//   http://www.apache.org/licenses/LICENSE-2.0
+</span><span class="boring">//
+</span><span class="boring">// Unless required by applicable law or agreed to in writing,
+</span><span class="boring">// software distributed under the License is distributed on an
+</span><span class="boring">// &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+</span><span class="boring">// KIND, either express or implied.  See the License for the
+</span><span class="boring">// specific language governing permissions and limitations
+</span><span class="boring">// under the License.
+</span><span class="boring">
+</span><span class="boring">use std::collections::HashMap;
+</span><span class="boring">
+</span><span class="boring">use iceberg::spec::{NestedField, PrimitiveType, Schema, Type};
+</span><span class="boring">use iceberg::{Catalog, CatalogBuilder, NamespaceIdent, TableCreation, TableIdent};
+</span><span class="boring">use iceberg_catalog_rest::{REST_CATALOG_PROP_URI, RestCatalogBuilder};
+</span><span class="boring">
+</span><span class="boring">static REST_URI: &amp;str = &quot;http://localhost:8181&quot;;
+</span><span class="boring">static NAMESPACE: &amp;str = &quot;default&quot;;
+</span><span class="boring">static TABLE_NAME: &amp;str = &quot;t1&quot;;
+</span><span class="boring">
+</span><span class="boring">/// This is a simple example that demonstrates how to use [`RestCatalog`] to create tables.
+</span><span class="boring">///
+</span><span class="boring">/// The demo creates a table creates a table and then later retrieves the same table.
+</span><span class="boring">///
+</span><span class="boring">/// A running instance of the iceberg-rest catalog on port 8181 is required. You can find how to run
+</span><span class="boring">/// the iceberg-rest catalog with `docker compose` in the official
+</span><span class="boring">/// [quickstart documentation](https://iceberg.apache.org/spark-quickstart/).
+</span><span class="boring">#[tokio::main]
+</span><span class="boring">async fn main() {
+</span><span class="boring">    // Create the REST iceberg catalog.
+</span><span class="boring">    let catalog = RestCatalogBuilder::default()
+</span><span class="boring">        .load(
+</span><span class="boring">            &quot;rest&quot;,
+</span><span class="boring">            HashMap::from([(REST_CATALOG_PROP_URI.to_string(), REST_URI.to_string())]),
+</span><span class="boring">        )
+</span><span class="boring">        .await
+</span><span class="boring">        .unwrap();
+</span><span class="boring">
+</span>    // Create the table identifier.
+    let namespace_ident = NamespaceIdent::from_vec(vec![NAMESPACE.to_string()]).unwrap();
+    let table_ident = TableIdent::new(namespace_ident.clone(), TABLE_NAME.to_string());
+
+    // You can also use the `from_strs` method on `TableIdent` to create the table identifier.
+    // let table_ident = TableIdent::from_strs([NAMESPACE, TABLE_NAME]).unwrap();
+
+    // Drop the table if it already exists.
+    if catalog.table_exists(&amp;table_ident).await.unwrap() {
+        println!(&quot;Table {TABLE_NAME} already exists, dropping now.&quot;);
+        catalog.drop_table(&amp;table_ident).await.unwrap();
+    }
+
+    // Build the table schema.
+    let table_schema = Schema::builder()
+        .with_fields(vec![
+            NestedField::optional(1, &quot;foo&quot;, Type::Primitive(PrimitiveType::String)).into(),
+            NestedField::required(2, &quot;bar&quot;, Type::Primitive(PrimitiveType::Int)).into(),
+            NestedField::optional(3, &quot;baz&quot;, Type::Primitive(PrimitiveType::Boolean)).into(),
+        ])
+        .with_schema_id(1)
+        .with_identifier_field_ids(vec![2])
+        .build()
+        .unwrap();
+
+    // Build the table creation parameters.
+    let table_creation = TableCreation::builder()
+        .name(table_ident.name.clone())
+        .schema(table_schema.clone())
+        .properties(HashMap::from([(&quot;owner&quot;.to_string(), &quot;testx&quot;.to_string())]))
+        .build();
+
+    // Create the table.
+    let _created_table = catalog
+        .create_table(&amp;table_ident.namespace, table_creation)
+        .await
+        .unwrap();
+    println!(&quot;Table {TABLE_NAME} created!&quot;);
+<span class="boring">
+</span><span class="boring">    // Ensure that the table is under the correct namespace.
+</span><span class="boring">    assert!(
+</span><span class="boring">        catalog
+</span><span class="boring">            .list_tables(&amp;namespace_ident)
+</span><span class="boring">            .await
+</span><span class="boring">            .unwrap()
+</span><span class="boring">            .contains(&amp;table_ident)
+</span><span class="boring">    );
+</span><span class="boring">
+</span><span class="boring">    // Load the table back from the catalog. It should be identical to the created table.
+</span><span class="boring">    let loaded_table = catalog.load_table(&amp;table_ident).await.unwrap();
+</span><span class="boring">    println!(&quot;Table {TABLE_NAME} loaded!\n\nTable: {loaded_table:?}&quot;);
+</span><span class="boring">}</span></code></pre>
+<p>Also, you can load a table directly:</p>
+<pre><code class="language-rust no_run noplayground"><span class="boring">// Licensed to the Apache Software Foundation (ASF) under one
+</span><span class="boring">// or more contributor license agreements.  See the NOTICE file
+</span><span class="boring">// distributed with this work for additional information
+</span><span class="boring">// regarding copyright ownership.  The ASF licenses this file
+</span><span class="boring">// to you under the Apache License, Version 2.0 (the
+</span><span class="boring">// &quot;License&quot;); you may not use this file except in compliance
+</span><span class="boring">// with the License.  You may obtain a copy of the License at
+</span><span class="boring">//
+</span><span class="boring">//   http://www.apache.org/licenses/LICENSE-2.0
+</span><span class="boring">//
+</span><span class="boring">// Unless required by applicable law or agreed to in writing,
+</span><span class="boring">// software distributed under the License is distributed on an
+</span><span class="boring">// &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+</span><span class="boring">// KIND, either express or implied.  See the License for the
+</span><span class="boring">// specific language governing permissions and limitations
+</span><span class="boring">// under the License.
+</span><span class="boring">
+</span><span class="boring">use std::collections::HashMap;
+</span><span class="boring">
+</span><span class="boring">use iceberg::spec::{NestedField, PrimitiveType, Schema, Type};
+</span><span class="boring">use iceberg::{Catalog, CatalogBuilder, NamespaceIdent, TableCreation, TableIdent};
+</span><span class="boring">use iceberg_catalog_rest::{REST_CATALOG_PROP_URI, RestCatalogBuilder};
+</span><span class="boring">
+</span><span class="boring">static REST_URI: &amp;str = &quot;http://localhost:8181&quot;;
+</span><span class="boring">static NAMESPACE: &amp;str = &quot;default&quot;;
+</span><span class="boring">static TABLE_NAME: &amp;str = &quot;t1&quot;;
+</span><span class="boring">
+</span><span class="boring">/// This is a simple example that demonstrates how to use [`RestCatalog`] to create tables.
+</span><span class="boring">///
+</span><span class="boring">/// The demo creates a table creates a table and then later retrieves the same table.
+</span><span class="boring">///
+</span><span class="boring">/// A running instance of the iceberg-rest catalog on port 8181 is required. You can find how to run
+</span><span class="boring">/// the iceberg-rest catalog with `docker compose` in the official
+</span><span class="boring">/// [quickstart documentation](https://iceberg.apache.org/spark-quickstart/).
+</span><span class="boring">#[tokio::main]
+</span><span class="boring">async fn main() {
+</span><span class="boring">    // Create the REST iceberg catalog.
+</span><span class="boring">    let catalog = RestCatalogBuilder::default()
+</span><span class="boring">        .load(
+</span><span class="boring">            &quot;rest&quot;,
+</span><span class="boring">            HashMap::from([(REST_CATALOG_PROP_URI.to_string(), REST_URI.to_string())]),
+</span><span class="boring">        )
+</span><span class="boring">        .await
+</span><span class="boring">        .unwrap();
+</span><span class="boring">
+</span><span class="boring">    // Create the table identifier.
+</span><span class="boring">    let namespace_ident = NamespaceIdent::from_vec(vec![NAMESPACE.to_string()]).unwrap();
+</span><span class="boring">    let table_ident = TableIdent::new(namespace_ident.clone(), TABLE_NAME.to_string());
+</span><span class="boring">
+</span><span class="boring">    // You can also use the `from_strs` method on `TableIdent` to create the table identifier.
+</span><span class="boring">    // let table_ident = TableIdent::from_strs([NAMESPACE, TABLE_NAME]).unwrap();
+</span><span class="boring">
+</span><span class="boring">    // Drop the table if it already exists.
+</span><span class="boring">    if catalog.table_exists(&amp;table_ident).await.unwrap() {
+</span><span class="boring">        println!(&quot;Table {TABLE_NAME} already exists, dropping now.&quot;);
+</span><span class="boring">        catalog.drop_table(&amp;table_ident).await.unwrap();
+</span><span class="boring">    }
+</span><span class="boring">
+</span><span class="boring">    // Build the table schema.
+</span><span class="boring">    let table_schema = Schema::builder()
+</span><span class="boring">        .with_fields(vec![
+</span><span class="boring">            NestedField::optional(1, &quot;foo&quot;, Type::Primitive(PrimitiveType::String)).into(),
+</span><span class="boring">            NestedField::required(2, &quot;bar&quot;, Type::Primitive(PrimitiveType::Int)).into(),
+</span><span class="boring">            NestedField::optional(3, &quot;baz&quot;, Type::Primitive(PrimitiveType::Boolean)).into(),
+</span><span class="boring">        ])
+</span><span class="boring">        .with_schema_id(1)
+</span><span class="boring">        .with_identifier_field_ids(vec![2])
+</span><span class="boring">        .build()
+</span><span class="boring">        .unwrap();
+</span><span class="boring">
+</span><span class="boring">    // Build the table creation parameters.
+</span><span class="boring">    let table_creation = TableCreation::builder()
+</span><span class="boring">        .name(table_ident.name.clone())
+</span><span class="boring">        .schema(table_schema.clone())
+</span><span class="boring">        .properties(HashMap::from([(&quot;owner&quot;.to_string(), &quot;testx&quot;.to_string())]))
+</span><span class="boring">        .build();
+</span><span class="boring">
+</span><span class="boring">    // Create the table.
+</span><span class="boring">    let _created_table = catalog
+</span><span class="boring">        .create_table(&amp;table_ident.namespace, table_creation)
+</span><span class="boring">        .await
+</span><span class="boring">        .unwrap();
+</span><span class="boring">    println!(&quot;Table {TABLE_NAME} created!&quot;);
+</span><span class="boring">
+</span>    // Ensure that the table is under the correct namespace.
+    assert!(
+        catalog
+            .list_tables(&amp;namespace_ident)
+            .await
+            .unwrap()
+            .contains(&amp;table_ident)
+    );
+
+    // Load the table back from the catalog. It should be identical to the created table.
+    let loaded_table = catalog.load_table(&amp;table_ident).await.unwrap();
+    println!(&quot;Table {TABLE_NAME} loaded!\n\nTable: {loaded_table:?}&quot;);
+<span class="boring">}</span></code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="download.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="CONTRIBUTING.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="download.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="CONTRIBUTING.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

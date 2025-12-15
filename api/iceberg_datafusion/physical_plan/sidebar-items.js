@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["project_with_partition"],"struct":["IcebergTableScan"]};
