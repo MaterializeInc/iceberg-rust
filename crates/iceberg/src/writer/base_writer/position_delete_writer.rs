@@ -21,24 +21,37 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Field, Schema as ArrowSchema, SchemaRef as ArrowSchemaRef};
-use itertools::Itertools;
 use parquet::arrow::PARQUET_FIELD_ID_META_KEY;
 
-use crate::spec::{DataFile, Struct};
-use crate::writer::file_writer::{FileWriter, FileWriterBuilder};
+use crate::spec::{DataFile, PartitionKey, Struct};
+use crate::writer::file_writer::location_generator::{FileNameGenerator, LocationGenerator};
+use crate::writer::file_writer::rolling_writer::{RollingFileWriter, RollingFileWriterBuilder};
+use crate::writer::file_writer::FileWriterBuilder;
 use crate::writer::{IcebergWriter, IcebergWriterBuilder};
 use crate::{Error, ErrorKind, Result};
 
 /// Builder for `PositionDeleteWriter`.
-#[derive(Clone, Debug)]
-pub struct PositionDeleteFileWriterBuilder<B: FileWriterBuilder> {
-    inner: B,
+#[derive(Debug)]
+pub struct PositionDeleteFileWriterBuilder<
+    B: FileWriterBuilder,
+    L: LocationGenerator,
+    F: FileNameGenerator,
+> {
+    inner: RollingFileWriterBuilder<B, L, F>,
     config: PositionDeleteWriterConfig,
 }
 
-impl<B: FileWriterBuilder> PositionDeleteFileWriterBuilder<B> {
-    /// Create a new `PositionDeleteFileWriterBuilder` using a `FileWriterBuilder`.
-    pub fn new(inner: B, config: PositionDeleteWriterConfig) -> Self {
+impl<B, L, F> PositionDeleteFileWriterBuilder<B, L, F>
+where
+    B: FileWriterBuilder,
+    L: LocationGenerator,
+    F: FileNameGenerator,
+{
+    /// Create a new `PositionDeleteFileWriterBuilder` using a `RollingFileWriterBuilder`.
+    pub fn new(
+        inner: RollingFileWriterBuilder<B, L, F>,
+        config: PositionDeleteWriterConfig,
+    ) -> Self {
         Self { inner, config }
     }
 }
@@ -98,15 +111,21 @@ impl PositionDeleteWriterConfig {
 }
 
 #[async_trait::async_trait]
-impl<B: FileWriterBuilder> IcebergWriterBuilder for PositionDeleteFileWriterBuilder<B> {
-    type R = PositionDeleteFileWriter<B>;
+impl<B, L, F> IcebergWriterBuilder for PositionDeleteFileWriterBuilder<B, L, F>
+where
+    B: FileWriterBuilder,
+    L: LocationGenerator,
+    F: FileNameGenerator,
+{
+    type R = PositionDeleteFileWriter<B, L, F>;
 
-    async fn build(self) -> Result<Self::R> {
+    async fn build(&self, partition_key: Option<PartitionKey>) -> Result<Self::R> {
         Ok(PositionDeleteFileWriter {
-            inner_writer: Some(self.inner.clone().build().await?),
-            partition_value: self.config.partition_value,
+            inner: Some(self.inner.build()),
+            partition_value: self.config.partition_value.clone(),
             partition_spec_id: self.config.partition_spec_id,
-            referenced_data_file: self.config.referenced_data_file,
+            referenced_data_file: self.config.referenced_data_file.clone(),
+            partition_key,
         })
     }
 }
@@ -117,55 +136,23 @@ impl<B: FileWriterBuilder> IcebergWriterBuilder for PositionDeleteFileWriterBuil
 /// by their position (row number). The schema is fixed with two columns:
 /// - file_path: The path to the data file
 /// - pos: The row position (0-indexed) in that file
-///
-/// # Example
-///
-/// ```no_run
-/// use std::sync::Arc;
-/// use arrow_array::{RecordBatch, StringArray, Int64Array};
-/// use iceberg::spec::DataFileFormat;
-/// use iceberg::writer::base_writer::position_delete_writer::{
-///     PositionDeleteFileWriterBuilder, PositionDeleteWriterConfig
-/// };
-/// use iceberg::writer::file_writer::ParquetWriterBuilder;
-/// use iceberg::writer::IcebergWriterBuilder;
-/// # use iceberg::Result;
-/// # async fn example() -> Result<()> {
-/// # let file_io = iceberg::io::FileIOBuilder::new_fs_io().build()?;
-/// # let location_gen = iceberg::writer::file_writer::location_generator::DefaultLocationGenerator::with_data_location("/tmp".to_string());
-/// # let file_name_gen = iceberg::writer::file_writer::location_generator::DefaultFileNameGenerator::new("test".to_string(), None, DataFileFormat::Parquet);
-/// # let schema = Arc::new(iceberg::spec::Schema::builder().with_schema_id(0).build()?);
-/// # let parquet_builder = ParquetWriterBuilder::new(Default::default(), schema, None, file_io, location_gen, file_name_gen);
-///
-/// // Create position delete writer
-/// let config = PositionDeleteWriterConfig::new(None, 0, None);
-/// let mut writer = PositionDeleteFileWriterBuilder::new(parquet_builder, config)
-///     .build()
-///     .await?;
-///
-/// // Write delete records
-/// let file_paths = StringArray::from(vec!["s3://bucket/data/file1.parquet"]);
-/// let positions = Int64Array::from(vec![42]); // Delete row 42
-/// let batch = RecordBatch::try_new(
-///     PositionDeleteWriterConfig::arrow_schema(),
-///     vec![Arc::new(file_paths), Arc::new(positions)],
-/// )?;
-///
-/// writer.write(batch).await?;
-/// let data_files = writer.close().await?;
-/// # Ok(())
-/// # }
-/// ```
 #[derive(Debug)]
-pub struct PositionDeleteFileWriter<B: FileWriterBuilder> {
-    inner_writer: Option<B::R>,
+pub struct PositionDeleteFileWriter<B: FileWriterBuilder, L: LocationGenerator, F: FileNameGenerator>
+{
+    inner: Option<RollingFileWriter<B, L, F>>,
     partition_value: Struct,
     partition_spec_id: i32,
     referenced_data_file: Option<String>,
+    partition_key: Option<PartitionKey>,
 }
 
 #[async_trait::async_trait]
-impl<B: FileWriterBuilder> IcebergWriter for PositionDeleteFileWriter<B> {
+impl<B, L, F> IcebergWriter for PositionDeleteFileWriter<B, L, F>
+where
+    B: FileWriterBuilder,
+    L: LocationGenerator,
+    F: FileNameGenerator,
+{
     async fn write(&mut self, batch: RecordBatch) -> Result<()> {
         // Validate the batch has the correct schema
         let expected_schema = PositionDeleteWriterConfig::arrow_schema();
@@ -180,8 +167,8 @@ impl<B: FileWriterBuilder> IcebergWriter for PositionDeleteFileWriter<B> {
             ));
         }
 
-        if let Some(writer) = self.inner_writer.as_mut() {
-            writer.write(&batch).await
+        if let Some(writer) = self.inner.as_mut() {
+            writer.write(&self.partition_key, &batch).await
         } else {
             Err(Error::new(
                 ErrorKind::Unexpected,
@@ -191,8 +178,8 @@ impl<B: FileWriterBuilder> IcebergWriter for PositionDeleteFileWriter<B> {
     }
 
     async fn close(&mut self) -> Result<Vec<DataFile>> {
-        if let Some(writer) = self.inner_writer.take() {
-            Ok(writer
+        if let Some(writer) = self.inner.take() {
+            writer
                 .close()
                 .await?
                 .into_iter()
@@ -204,10 +191,14 @@ impl<B: FileWriterBuilder> IcebergWriter for PositionDeleteFileWriter<B> {
                         res.referenced_data_file(Some(data_file.clone()));
                     }
                     // Position deletes must have null sort_order_id (default is None)
-                    res.build()
-                        .expect("Failed to build position delete data file")
+                    res.build().map_err(|e| {
+                        Error::new(
+                            ErrorKind::DataInvalid,
+                            format!("Failed to build position delete data file: {e}"),
+                        )
+                    })
                 })
-                .collect_vec())
+                .collect()
         } else {
             Err(Error::new(
                 ErrorKind::Unexpected,
@@ -231,11 +222,12 @@ mod tests {
     use crate::arrow::arrow_schema_to_schema;
     use crate::io::{FileIO, FileIOBuilder};
     use crate::spec::DataFileFormat;
+    use crate::writer::IcebergWriterBuilder;
+    use crate::writer::file_writer::ParquetWriterBuilder;
     use crate::writer::file_writer::location_generator::{
         DefaultFileNameGenerator, DefaultLocationGenerator,
     };
-    use crate::writer::file_writer::ParquetWriterBuilder;
-    use crate::writer::IcebergWriterBuilder;
+    use crate::writer::file_writer::rolling_writer::RollingFileWriterBuilder;
 
     async fn check_parquet_position_delete_file(
         file_io: &FileIO,
@@ -292,16 +284,15 @@ mod tests {
 
         // Create writer
         let config = PositionDeleteWriterConfig::new(None, 0, None);
-        let pb = ParquetWriterBuilder::new(
-            WriterProperties::builder().build(),
-            schema,
-            None,
+        let pb = ParquetWriterBuilder::new(WriterProperties::builder().build(), schema);
+        let rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
+            pb,
             file_io.clone(),
             location_gen,
             file_name_gen,
         );
-        let mut writer = PositionDeleteFileWriterBuilder::new(pb, config)
-            .build()
+        let mut writer = PositionDeleteFileWriterBuilder::new(rolling_writer_builder, config)
+            .build(None)
             .await?;
 
         // Create test data - delete rows 5, 10, 15 from a file
@@ -311,10 +302,10 @@ mod tests {
             "s3://bucket/data/file1.parquet",
         ]);
         let positions = Int64Array::from(vec![5, 10, 15]);
-        let batch = RecordBatch::try_new(
-            arrow_schema.clone(),
-            vec![Arc::new(file_paths), Arc::new(positions)],
-        )?;
+        let batch = RecordBatch::try_new(arrow_schema.clone(), vec![
+            Arc::new(file_paths),
+            Arc::new(positions),
+        ])?;
 
         // Write
         writer.write(batch.clone()).await?;
@@ -345,25 +336,24 @@ mod tests {
         // Create writer with referenced data file
         let referenced_file = "s3://bucket/data/file1.parquet".to_string();
         let config = PositionDeleteWriterConfig::new(None, 0, Some(referenced_file.clone()));
-        let pb = ParquetWriterBuilder::new(
-            WriterProperties::builder().build(),
-            schema,
-            None,
+        let pb = ParquetWriterBuilder::new(WriterProperties::builder().build(), schema);
+        let rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
+            pb,
             file_io.clone(),
             location_gen,
             file_name_gen,
         );
-        let mut writer = PositionDeleteFileWriterBuilder::new(pb, config)
-            .build()
+        let mut writer = PositionDeleteFileWriterBuilder::new(rolling_writer_builder, config)
+            .build(None)
             .await?;
 
         // Create test data
         let file_paths = StringArray::from(vec![referenced_file.as_str()]);
         let positions = Int64Array::from(vec![42]);
-        let batch = RecordBatch::try_new(
-            arrow_schema.clone(),
-            vec![Arc::new(file_paths), Arc::new(positions)],
-        )?;
+        let batch = RecordBatch::try_new(arrow_schema.clone(), vec![
+            Arc::new(file_paths),
+            Arc::new(positions),
+        ])?;
 
         writer.write(batch.clone()).await?;
         let data_files = writer.close().await?;
@@ -391,16 +381,15 @@ mod tests {
         let schema = Arc::new(arrow_schema_to_schema(&arrow_schema)?);
 
         let config = PositionDeleteWriterConfig::new(None, 0, None);
-        let pb = ParquetWriterBuilder::new(
-            WriterProperties::builder().build(),
-            schema,
-            None,
+        let pb = ParquetWriterBuilder::new(WriterProperties::builder().build(), schema);
+        let rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
+            pb,
             file_io.clone(),
             location_gen,
             file_name_gen,
         );
-        let mut writer = PositionDeleteFileWriterBuilder::new(pb, config)
-            .build()
+        let mut writer = PositionDeleteFileWriterBuilder::new(rolling_writer_builder, config)
+            .build(None)
             .await?;
 
         // Try to write batch with wrong schema (missing pos field)
@@ -414,10 +403,7 @@ mod tests {
 
         let result = writer.write(wrong_batch).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("invalid schema"));
+        assert!(result.unwrap_err().to_string().contains("invalid schema"));
 
         Ok(())
     }
@@ -436,16 +422,15 @@ mod tests {
         let schema = Arc::new(arrow_schema_to_schema(&arrow_schema)?);
 
         let config = PositionDeleteWriterConfig::new(None, 0, None);
-        let pb = ParquetWriterBuilder::new(
-            WriterProperties::builder().build(),
-            schema,
-            None,
+        let pb = ParquetWriterBuilder::new(WriterProperties::builder().build(), schema);
+        let rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
+            pb,
             file_io.clone(),
             location_gen,
             file_name_gen,
         );
-        let mut writer = PositionDeleteFileWriterBuilder::new(pb, config)
-            .build()
+        let mut writer = PositionDeleteFileWriterBuilder::new(rolling_writer_builder, config)
+            .build(None)
             .await?;
 
         // Delete rows from multiple data files
@@ -457,10 +442,10 @@ mod tests {
             "s3://bucket/data/file3.parquet",
         ]);
         let positions = Int64Array::from(vec![0, 10, 5, 15, 100]);
-        let batch = RecordBatch::try_new(
-            arrow_schema.clone(),
-            vec![Arc::new(file_paths), Arc::new(positions)],
-        )?;
+        let batch = RecordBatch::try_new(arrow_schema.clone(), vec![
+            Arc::new(file_paths),
+            Arc::new(positions),
+        ])?;
 
         writer.write(batch.clone()).await?;
         let data_files = writer.close().await?;

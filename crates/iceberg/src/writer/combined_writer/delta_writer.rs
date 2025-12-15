@@ -18,7 +18,7 @@ use itertools::Itertools;
 use parquet::arrow::PARQUET_FIELD_ID_META_KEY;
 
 use crate::arrow::schema_to_arrow_schema;
-use crate::spec::DataFile;
+use crate::spec::{DataFile, PartitionKey};
 use crate::writer::base_writer::position_delete_writer::PositionDeleteWriterConfig;
 use crate::writer::{CurrentFileStatus, IcebergWriter, IcebergWriterBuilder};
 use crate::{Error, ErrorKind, Result};
@@ -200,15 +200,21 @@ where
     DWB::R: CurrentFileStatus,
 {
     type R = DeltaWriter<DWB::R, PDWB::R, EDWB::R>;
-    async fn build(self) -> Result<Self::R> {
-        let data_writer = self.data_writer_builder.build().await?;
-        let pos_delete_writer = self.pos_delete_writer_builder.build().await?;
-        let eq_delete_writer = self.eq_delete_writer_builder.build().await?;
+    async fn build(&self, partition_key: Option<PartitionKey>) -> Result<Self::R> {
+        let data_writer = self
+            .data_writer_builder
+            .build(partition_key.clone())
+            .await?;
+        let pos_delete_writer = self
+            .pos_delete_writer_builder
+            .build(partition_key.clone())
+            .await?;
+        let eq_delete_writer = self.eq_delete_writer_builder.build(partition_key).await?;
         DeltaWriter::try_new(
             data_writer,
             pos_delete_writer,
             eq_delete_writer,
-            self.unique_cols,
+            self.unique_cols.clone(),
         )
     }
 }
@@ -746,35 +752,38 @@ mod tests {
 
     // Tests for DeltaWriter
     mod delta_writer_tests {
-        use super::*;
         use std::collections::HashMap;
+
         use arrow_array::{Int32Array, RecordBatch, StringArray};
         use arrow_schema::{DataType, Field, Schema};
         use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
         use parquet::file::properties::WriterProperties;
         use tempfile::TempDir;
 
+        use super::*;
         use crate::arrow::arrow_schema_to_schema;
         use crate::io::FileIOBuilder;
-        use crate::spec::{DataFileFormat, NestedField, PrimitiveType, Schema as IcebergSchema, Type};
+        use crate::spec::{
+            DataFileFormat, NestedField, PrimitiveType, Schema as IcebergSchema, Type,
+        };
+        use crate::writer::IcebergWriterBuilder;
         use crate::writer::base_writer::data_file_writer::DataFileWriterBuilder;
         use crate::writer::base_writer::equality_delete_writer::{
             EqualityDeleteFileWriterBuilder, EqualityDeleteWriterConfig,
         };
         use crate::writer::base_writer::position_delete_writer::PositionDeleteFileWriterBuilder;
+        use crate::writer::file_writer::ParquetWriterBuilder;
         use crate::writer::file_writer::location_generator::{
             DefaultFileNameGenerator, DefaultLocationGenerator,
         };
-        use crate::writer::file_writer::ParquetWriterBuilder;
-        use crate::writer::IcebergWriterBuilder;
+        use crate::writer::file_writer::rolling_writer::RollingFileWriterBuilder;
 
         fn create_iceberg_schema() -> Arc<IcebergSchema> {
             Arc::new(
                 IcebergSchema::builder()
                     .with_schema_id(0)
                     .with_fields(vec![
-                        NestedField::required(1, "id", Type::Primitive(PrimitiveType::Int))
-                            .into(),
+                        NestedField::required(1, "id", Type::Primitive(PrimitiveType::Int)).into(),
                         NestedField::optional(2, "name", Type::Primitive(PrimitiveType::String))
                             .into(),
                     ])
@@ -814,75 +823,81 @@ mod tests {
             let schema = create_iceberg_schema();
 
             // Create data writer
-            let data_location_gen = DefaultLocationGenerator::with_data_location(
-                format!("{}/data", temp_dir.path().to_str().unwrap()),
-            );
+            let data_location_gen = DefaultLocationGenerator::with_data_location(format!(
+                "{}/data",
+                temp_dir.path().to_str().unwrap()
+            ));
             let data_file_name_gen =
                 DefaultFileNameGenerator::new("data".to_string(), None, DataFileFormat::Parquet);
-            let data_parquet_writer = ParquetWriterBuilder::new(
-                WriterProperties::builder().build(),
-                schema.clone(),
-                None,
+            let data_parquet_writer =
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), schema.clone());
+            let data_rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
+                data_parquet_writer,
                 file_io.clone(),
                 data_location_gen,
                 data_file_name_gen,
             );
-            let data_writer = DataFileWriterBuilder::new(data_parquet_writer, None, 0);
+            let data_writer = DataFileWriterBuilder::new(data_rolling_writer_builder);
 
             // Create position delete writer
             let pos_delete_schema = Arc::new(arrow_schema_to_schema(
                 &PositionDeleteWriterConfig::arrow_schema(),
             )?);
-            let pos_delete_location_gen = DefaultLocationGenerator::with_data_location(
-                format!("{}/pos_delete", temp_dir.path().to_str().unwrap()),
-            );
+            let pos_delete_location_gen = DefaultLocationGenerator::with_data_location(format!(
+                "{}/pos_delete",
+                temp_dir.path().to_str().unwrap()
+            ));
             let pos_delete_file_name_gen = DefaultFileNameGenerator::new(
                 "pos_delete".to_string(),
                 None,
                 DataFileFormat::Parquet,
             );
-            let pos_delete_parquet_writer = ParquetWriterBuilder::new(
-                WriterProperties::builder().build(),
-                pos_delete_schema,
-                None,
-                file_io.clone(),
-                pos_delete_location_gen,
-                pos_delete_file_name_gen,
-            );
+            let pos_delete_parquet_writer =
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), pos_delete_schema);
+            let pos_delete_rolling_writer_builder =
+                RollingFileWriterBuilder::new_with_default_file_size(
+                    pos_delete_parquet_writer,
+                    file_io.clone(),
+                    pos_delete_location_gen,
+                    pos_delete_file_name_gen,
+                );
             let pos_delete_writer = PositionDeleteFileWriterBuilder::new(
-                pos_delete_parquet_writer,
+                pos_delete_rolling_writer_builder,
                 PositionDeleteWriterConfig::new(None, 0, None),
             );
 
             // Create equality delete writer
-            let eq_delete_config =
-                EqualityDeleteWriterConfig::new(vec![1], schema.clone(), None, 0)?;
+            let eq_delete_config = EqualityDeleteWriterConfig::new(vec![1], schema.clone())?;
             let eq_delete_schema = Arc::new(arrow_schema_to_schema(
                 eq_delete_config.projected_arrow_schema_ref(),
             )?);
-            let eq_delete_location_gen = DefaultLocationGenerator::with_data_location(
-                format!("{}/eq_delete", temp_dir.path().to_str().unwrap()),
-            );
+            let eq_delete_location_gen = DefaultLocationGenerator::with_data_location(format!(
+                "{}/eq_delete",
+                temp_dir.path().to_str().unwrap()
+            ));
             let eq_delete_file_name_gen = DefaultFileNameGenerator::new(
                 "eq_delete".to_string(),
                 None,
                 DataFileFormat::Parquet,
             );
-            let eq_delete_parquet_writer = ParquetWriterBuilder::new(
-                WriterProperties::builder().build(),
-                eq_delete_schema,
-                None,
-                file_io.clone(),
-                eq_delete_location_gen,
-                eq_delete_file_name_gen,
+            let eq_delete_parquet_writer =
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), eq_delete_schema);
+            let eq_delete_rolling_writer_builder =
+                RollingFileWriterBuilder::new_with_default_file_size(
+                    eq_delete_parquet_writer,
+                    file_io.clone(),
+                    eq_delete_location_gen,
+                    eq_delete_file_name_gen,
+                );
+            let eq_delete_writer = EqualityDeleteFileWriterBuilder::new(
+                eq_delete_rolling_writer_builder,
+                eq_delete_config,
             );
-            let eq_delete_writer =
-                EqualityDeleteFileWriterBuilder::new(eq_delete_parquet_writer, eq_delete_config);
 
             // Create delta writer
-            let data_writer_instance = data_writer.build().await?;
-            let pos_delete_writer_instance = pos_delete_writer.build().await?;
-            let eq_delete_writer_instance = eq_delete_writer.build().await?;
+            let data_writer_instance = data_writer.build(None).await?;
+            let pos_delete_writer_instance = pos_delete_writer.build(None).await?;
+            let eq_delete_writer_instance = eq_delete_writer.build(None).await?;
             let mut delta_writer = DeltaWriter::try_new(
                 data_writer_instance,
                 pos_delete_writer_instance,
@@ -902,17 +917,13 @@ mod tests {
 
             // Should have 1 data file, 0 delete files
             assert_eq!(data_files.len(), 1);
-            assert_eq!(
-                data_files[0].content,
-                crate::spec::DataContentType::Data
-            );
+            assert_eq!(data_files[0].content, crate::spec::DataContentType::Data);
             assert_eq!(data_files[0].record_count, 3);
 
             // Read back and verify
             let input_file = file_io.new_input(data_files[0].file_path.clone())?;
             let content = input_file.read().await?;
-            let reader = ParquetRecordBatchReaderBuilder::try_new(content)?
-                .build()?;
+            let reader = ParquetRecordBatchReaderBuilder::try_new(content)?.build()?;
             let batches: Vec<_> = reader.map(|b| b.unwrap()).collect();
             assert_eq!(batches.len(), 1);
             assert_eq!(batches[0].num_rows(), 3);
@@ -927,72 +938,78 @@ mod tests {
             let schema = create_iceberg_schema();
 
             // Create writers (same setup as above)
-            let data_location_gen = DefaultLocationGenerator::with_data_location(
-                format!("{}/data", temp_dir.path().to_str().unwrap()),
-            );
+            let data_location_gen = DefaultLocationGenerator::with_data_location(format!(
+                "{}/data",
+                temp_dir.path().to_str().unwrap()
+            ));
             let data_file_name_gen =
                 DefaultFileNameGenerator::new("data".to_string(), None, DataFileFormat::Parquet);
-            let data_parquet_writer = ParquetWriterBuilder::new(
-                WriterProperties::builder().build(),
-                schema.clone(),
-                None,
+            let data_parquet_writer =
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), schema.clone());
+            let data_rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
+                data_parquet_writer,
                 file_io.clone(),
                 data_location_gen,
                 data_file_name_gen,
             );
-            let data_writer = DataFileWriterBuilder::new(data_parquet_writer, None, 0);
+            let data_writer = DataFileWriterBuilder::new(data_rolling_writer_builder);
 
             let pos_delete_schema = Arc::new(arrow_schema_to_schema(
                 &PositionDeleteWriterConfig::arrow_schema(),
             )?);
-            let pos_delete_location_gen = DefaultLocationGenerator::with_data_location(
-                format!("{}/pos_delete", temp_dir.path().to_str().unwrap()),
-            );
+            let pos_delete_location_gen = DefaultLocationGenerator::with_data_location(format!(
+                "{}/pos_delete",
+                temp_dir.path().to_str().unwrap()
+            ));
             let pos_delete_file_name_gen = DefaultFileNameGenerator::new(
                 "pos_delete".to_string(),
                 None,
                 DataFileFormat::Parquet,
             );
-            let pos_delete_parquet_writer = ParquetWriterBuilder::new(
-                WriterProperties::builder().build(),
-                pos_delete_schema,
-                None,
-                file_io.clone(),
-                pos_delete_location_gen,
-                pos_delete_file_name_gen,
-            );
+            let pos_delete_parquet_writer =
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), pos_delete_schema);
+            let pos_delete_rolling_writer_builder =
+                RollingFileWriterBuilder::new_with_default_file_size(
+                    pos_delete_parquet_writer,
+                    file_io.clone(),
+                    pos_delete_location_gen,
+                    pos_delete_file_name_gen,
+                );
             let pos_delete_writer = PositionDeleteFileWriterBuilder::new(
-                pos_delete_parquet_writer,
+                pos_delete_rolling_writer_builder,
                 PositionDeleteWriterConfig::new(None, 0, None),
             );
 
-            let eq_delete_config =
-                EqualityDeleteWriterConfig::new(vec![1], schema.clone(), None, 0)?;
+            let eq_delete_config = EqualityDeleteWriterConfig::new(vec![1], schema.clone())?;
             let eq_delete_schema = Arc::new(arrow_schema_to_schema(
                 eq_delete_config.projected_arrow_schema_ref(),
             )?);
-            let eq_delete_location_gen = DefaultLocationGenerator::with_data_location(
-                format!("{}/eq_delete", temp_dir.path().to_str().unwrap()),
-            );
+            let eq_delete_location_gen = DefaultLocationGenerator::with_data_location(format!(
+                "{}/eq_delete",
+                temp_dir.path().to_str().unwrap()
+            ));
             let eq_delete_file_name_gen = DefaultFileNameGenerator::new(
                 "eq_delete".to_string(),
                 None,
                 DataFileFormat::Parquet,
             );
-            let eq_delete_parquet_writer = ParquetWriterBuilder::new(
-                WriterProperties::builder().build(),
-                eq_delete_schema,
-                None,
-                file_io.clone(),
-                eq_delete_location_gen,
-                eq_delete_file_name_gen,
+            let eq_delete_parquet_writer =
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), eq_delete_schema);
+            let eq_delete_rolling_writer_builder =
+                RollingFileWriterBuilder::new_with_default_file_size(
+                    eq_delete_parquet_writer,
+                    file_io.clone(),
+                    eq_delete_location_gen,
+                    eq_delete_file_name_gen,
+                );
+            let eq_delete_writer = EqualityDeleteFileWriterBuilder::new(
+                eq_delete_rolling_writer_builder,
+                eq_delete_config,
             );
-            let eq_delete_writer =
-                EqualityDeleteFileWriterBuilder::new(eq_delete_parquet_writer, eq_delete_config);
 
-            let data_writer_instance = data_writer.build().await?;
-            let pos_delete_writer_instance = pos_delete_writer.build().await?;
-            let eq_delete_writer_instance = eq_delete_writer.build().await?;
+            let data_writer_instance = data_writer.build(None).await?;
+            let pos_delete_writer_instance = pos_delete_writer.build(None).await?;
+            let eq_delete_writer_instance = eq_delete_writer.build(None).await?;
             let mut delta_writer = DeltaWriter::try_new(
                 data_writer_instance,
                 pos_delete_writer_instance,
@@ -1009,11 +1026,10 @@ mod tests {
             delta_writer.write(insert_batch).await?;
 
             // Now delete rows that were just inserted (should create position deletes)
-            let delete_batch = create_test_batch_with_ops(
-                vec![1, 2],
-                vec![Some("Alice"), Some("Bob")],
-                vec![-1, -1],
-            );
+            let delete_batch =
+                create_test_batch_with_ops(vec![1, 2], vec![Some("Alice"), Some("Bob")], vec![
+                    -1, -1,
+                ]);
             delta_writer.write(delete_batch).await?;
 
             let data_files = delta_writer.close().await?;
@@ -1036,8 +1052,7 @@ mod tests {
             // Verify position delete file content
             let input_file = file_io.new_input(pos_delete_file.file_path.clone())?;
             let content = input_file.read().await?;
-            let reader = ParquetRecordBatchReaderBuilder::try_new(content)?
-                .build()?;
+            let reader = ParquetRecordBatchReaderBuilder::try_new(content)?.build()?;
             let batches: Vec<_> = reader.map(|b| b.unwrap()).collect();
             assert_eq!(batches[0].num_rows(), 2);
 
@@ -1051,72 +1066,78 @@ mod tests {
             let schema = create_iceberg_schema();
 
             // Create writers
-            let data_location_gen = DefaultLocationGenerator::with_data_location(
-                format!("{}/data", temp_dir.path().to_str().unwrap()),
-            );
+            let data_location_gen = DefaultLocationGenerator::with_data_location(format!(
+                "{}/data",
+                temp_dir.path().to_str().unwrap()
+            ));
             let data_file_name_gen =
                 DefaultFileNameGenerator::new("data".to_string(), None, DataFileFormat::Parquet);
-            let data_parquet_writer = ParquetWriterBuilder::new(
-                WriterProperties::builder().build(),
-                schema.clone(),
-                None,
+            let data_parquet_writer =
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), schema.clone());
+            let data_rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
+                data_parquet_writer,
                 file_io.clone(),
                 data_location_gen,
                 data_file_name_gen,
             );
-            let data_writer = DataFileWriterBuilder::new(data_parquet_writer, None, 0);
+            let data_writer = DataFileWriterBuilder::new(data_rolling_writer_builder);
 
             let pos_delete_schema = Arc::new(arrow_schema_to_schema(
                 &PositionDeleteWriterConfig::arrow_schema(),
             )?);
-            let pos_delete_location_gen = DefaultLocationGenerator::with_data_location(
-                format!("{}/pos_delete", temp_dir.path().to_str().unwrap()),
-            );
+            let pos_delete_location_gen = DefaultLocationGenerator::with_data_location(format!(
+                "{}/pos_delete",
+                temp_dir.path().to_str().unwrap()
+            ));
             let pos_delete_file_name_gen = DefaultFileNameGenerator::new(
                 "pos_delete".to_string(),
                 None,
                 DataFileFormat::Parquet,
             );
-            let pos_delete_parquet_writer = ParquetWriterBuilder::new(
-                WriterProperties::builder().build(),
-                pos_delete_schema,
-                None,
-                file_io.clone(),
-                pos_delete_location_gen,
-                pos_delete_file_name_gen,
-            );
+            let pos_delete_parquet_writer =
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), pos_delete_schema);
+            let pos_delete_rolling_writer_builder =
+                RollingFileWriterBuilder::new_with_default_file_size(
+                    pos_delete_parquet_writer,
+                    file_io.clone(),
+                    pos_delete_location_gen,
+                    pos_delete_file_name_gen,
+                );
             let pos_delete_writer = PositionDeleteFileWriterBuilder::new(
-                pos_delete_parquet_writer,
+                pos_delete_rolling_writer_builder,
                 PositionDeleteWriterConfig::new(None, 0, None),
             );
 
-            let eq_delete_config =
-                EqualityDeleteWriterConfig::new(vec![1], schema.clone(), None, 0)?;
+            let eq_delete_config = EqualityDeleteWriterConfig::new(vec![1], schema.clone())?;
             let eq_delete_schema = Arc::new(arrow_schema_to_schema(
                 eq_delete_config.projected_arrow_schema_ref(),
             )?);
-            let eq_delete_location_gen = DefaultLocationGenerator::with_data_location(
-                format!("{}/eq_delete", temp_dir.path().to_str().unwrap()),
-            );
+            let eq_delete_location_gen = DefaultLocationGenerator::with_data_location(format!(
+                "{}/eq_delete",
+                temp_dir.path().to_str().unwrap()
+            ));
             let eq_delete_file_name_gen = DefaultFileNameGenerator::new(
                 "eq_delete".to_string(),
                 None,
                 DataFileFormat::Parquet,
             );
-            let eq_delete_parquet_writer = ParquetWriterBuilder::new(
-                WriterProperties::builder().build(),
-                eq_delete_schema,
-                None,
-                file_io.clone(),
-                eq_delete_location_gen,
-                eq_delete_file_name_gen,
+            let eq_delete_parquet_writer =
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), eq_delete_schema);
+            let eq_delete_rolling_writer_builder =
+                RollingFileWriterBuilder::new_with_default_file_size(
+                    eq_delete_parquet_writer,
+                    file_io.clone(),
+                    eq_delete_location_gen,
+                    eq_delete_file_name_gen,
+                );
+            let eq_delete_writer = EqualityDeleteFileWriterBuilder::new(
+                eq_delete_rolling_writer_builder,
+                eq_delete_config,
             );
-            let eq_delete_writer =
-                EqualityDeleteFileWriterBuilder::new(eq_delete_parquet_writer, eq_delete_config);
 
-            let data_writer_instance = data_writer.build().await?;
-            let pos_delete_writer_instance = pos_delete_writer.build().await?;
-            let eq_delete_writer_instance = eq_delete_writer.build().await?;
+            let data_writer_instance = data_writer.build(None).await?;
+            let pos_delete_writer_instance = pos_delete_writer.build(None).await?;
+            let eq_delete_writer_instance = eq_delete_writer.build(None).await?;
             let mut delta_writer = DeltaWriter::try_new(
                 data_writer_instance,
                 pos_delete_writer_instance,
@@ -1149,72 +1170,78 @@ mod tests {
             let schema = create_iceberg_schema();
 
             // Create writers
-            let data_location_gen = DefaultLocationGenerator::with_data_location(
-                format!("{}/data", temp_dir.path().to_str().unwrap()),
-            );
+            let data_location_gen = DefaultLocationGenerator::with_data_location(format!(
+                "{}/data",
+                temp_dir.path().to_str().unwrap()
+            ));
             let data_file_name_gen =
                 DefaultFileNameGenerator::new("data".to_string(), None, DataFileFormat::Parquet);
-            let data_parquet_writer = ParquetWriterBuilder::new(
-                WriterProperties::builder().build(),
-                schema.clone(),
-                None,
+            let data_parquet_writer =
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), schema.clone());
+            let data_rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
+                data_parquet_writer,
                 file_io.clone(),
                 data_location_gen,
                 data_file_name_gen,
             );
-            let data_writer = DataFileWriterBuilder::new(data_parquet_writer, None, 0);
+            let data_writer = DataFileWriterBuilder::new(data_rolling_writer_builder);
 
             let pos_delete_schema = Arc::new(arrow_schema_to_schema(
                 &PositionDeleteWriterConfig::arrow_schema(),
             )?);
-            let pos_delete_location_gen = DefaultLocationGenerator::with_data_location(
-                format!("{}/pos_delete", temp_dir.path().to_str().unwrap()),
-            );
+            let pos_delete_location_gen = DefaultLocationGenerator::with_data_location(format!(
+                "{}/pos_delete",
+                temp_dir.path().to_str().unwrap()
+            ));
             let pos_delete_file_name_gen = DefaultFileNameGenerator::new(
                 "pos_delete".to_string(),
                 None,
                 DataFileFormat::Parquet,
             );
-            let pos_delete_parquet_writer = ParquetWriterBuilder::new(
-                WriterProperties::builder().build(),
-                pos_delete_schema,
-                None,
-                file_io.clone(),
-                pos_delete_location_gen,
-                pos_delete_file_name_gen,
-            );
+            let pos_delete_parquet_writer =
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), pos_delete_schema);
+            let pos_delete_rolling_writer_builder =
+                RollingFileWriterBuilder::new_with_default_file_size(
+                    pos_delete_parquet_writer,
+                    file_io.clone(),
+                    pos_delete_location_gen,
+                    pos_delete_file_name_gen,
+                );
             let pos_delete_writer = PositionDeleteFileWriterBuilder::new(
-                pos_delete_parquet_writer,
+                pos_delete_rolling_writer_builder,
                 PositionDeleteWriterConfig::new(None, 0, None),
             );
 
-            let eq_delete_config =
-                EqualityDeleteWriterConfig::new(vec![1], schema.clone(), None, 0)?;
+            let eq_delete_config = EqualityDeleteWriterConfig::new(vec![1], schema.clone())?;
             let eq_delete_schema = Arc::new(arrow_schema_to_schema(
                 eq_delete_config.projected_arrow_schema_ref(),
             )?);
-            let eq_delete_location_gen = DefaultLocationGenerator::with_data_location(
-                format!("{}/eq_delete", temp_dir.path().to_str().unwrap()),
-            );
+            let eq_delete_location_gen = DefaultLocationGenerator::with_data_location(format!(
+                "{}/eq_delete",
+                temp_dir.path().to_str().unwrap()
+            ));
             let eq_delete_file_name_gen = DefaultFileNameGenerator::new(
                 "eq_delete".to_string(),
                 None,
                 DataFileFormat::Parquet,
             );
-            let eq_delete_parquet_writer = ParquetWriterBuilder::new(
-                WriterProperties::builder().build(),
-                eq_delete_schema,
-                None,
-                file_io.clone(),
-                eq_delete_location_gen,
-                eq_delete_file_name_gen,
+            let eq_delete_parquet_writer =
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), eq_delete_schema);
+            let eq_delete_rolling_writer_builder =
+                RollingFileWriterBuilder::new_with_default_file_size(
+                    eq_delete_parquet_writer,
+                    file_io.clone(),
+                    eq_delete_location_gen,
+                    eq_delete_file_name_gen,
+                );
+            let eq_delete_writer = EqualityDeleteFileWriterBuilder::new(
+                eq_delete_rolling_writer_builder,
+                eq_delete_config,
             );
-            let eq_delete_writer =
-                EqualityDeleteFileWriterBuilder::new(eq_delete_parquet_writer, eq_delete_config);
 
-            let data_writer_instance = data_writer.build().await?;
-            let pos_delete_writer_instance = pos_delete_writer.build().await?;
-            let eq_delete_writer_instance = eq_delete_writer.build().await?;
+            let data_writer_instance = data_writer.build(None).await?;
+            let pos_delete_writer_instance = pos_delete_writer.build(None).await?;
+            let eq_delete_writer_instance = eq_delete_writer.build(None).await?;
             let mut delta_writer = DeltaWriter::try_new(
                 data_writer_instance,
                 pos_delete_writer_instance,
@@ -1227,10 +1254,12 @@ mod tests {
 
             let result = delta_writer.write(batch).await;
             assert!(result.is_err());
-            assert!(result
-                .unwrap_err()
-                .to_string()
-                .contains("Ops column must be 1 (insert) or -1 (delete)"));
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Ops column must be 1 (insert) or -1 (delete)")
+            );
 
             Ok(())
         }

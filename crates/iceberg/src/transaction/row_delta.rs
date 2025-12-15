@@ -175,12 +175,8 @@ impl TransactionAction for RowDeltaAction {
 
         // Check duplicate files
         if self.check_duplicate {
-            snapshot_producer
-                .validate_duplicate_files(&self.added_data_files)
-                .await?;
-            snapshot_producer
-                .validate_duplicate_files(&self.added_delete_files)
-                .await?;
+            snapshot_producer.validate_duplicate_files().await?;
+            snapshot_producer.validate_duplicate_files().await?;
         }
 
         snapshot_producer
@@ -331,9 +327,10 @@ mod tests {
         let result = Arc::new(action).commit(&table).await;
         assert!(result.is_err());
         let err = result.err().unwrap();
-        assert!(err
-            .to_string()
-            .contains("has content type Data but was added as a delete file"));
+        assert!(
+            err.to_string()
+                .contains("has content type Data but was added as a delete file")
+        );
     }
 
     #[tokio::test]

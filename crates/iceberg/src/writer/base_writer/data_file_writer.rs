@@ -134,7 +134,7 @@ where
     }
 
     fn current_schema(&self) -> crate::spec::SchemaRef {
-        self.inner_writer.as_ref().unwrap().current_schema()
+        self.inner.as_ref().unwrap().current_schema()
     }
 }
 
