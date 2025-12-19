@@ -302,14 +302,20 @@ where
 
     async fn insert(&mut self, batch: RecordBatch) -> Result<()> {
         let rows = self.extract_unique_column_rows(&batch)?;
-        let file_path = self.data_writer.current_file_path();
-        let start_row_index = self.data_writer.current_row_num();
+        let batch_num_rows = batch.num_rows();
 
         // Write first to ensure the data is persisted before updating our tracking state.
         // This prevents inconsistent state if the write fails.
+        // Note: We must write before calling current_file_path() because the underlying
+        // writer may not have created the file yet (lazy initialization).
         self.data_writer.write(batch.clone()).await?;
 
-        // Only record positions after successful write
+        // Get file path and calculate start_row_index after successful write
+        let file_path = self.data_writer.current_file_path();
+        let end_row_num = self.data_writer.current_row_num();
+        let start_row_index = end_row_num - batch_num_rows;
+
+        // Record positions for each row in this batch
         for (i, row) in rows.iter().enumerate() {
             self.seen_rows.insert(row.owned(), Position {
                 row_index: start_row_index as i64 + i as i64,
@@ -833,6 +839,7 @@ mod tests {
                 ParquetWriterBuilder::new(WriterProperties::builder().build(), schema.clone());
             let data_rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
                 data_parquet_writer,
+                schema.clone(),
                 file_io.clone(),
                 data_location_gen,
                 data_file_name_gen,
@@ -853,10 +860,11 @@ mod tests {
                 DataFileFormat::Parquet,
             );
             let pos_delete_parquet_writer =
-                ParquetWriterBuilder::new(WriterProperties::builder().build(), pos_delete_schema);
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), pos_delete_schema.clone());
             let pos_delete_rolling_writer_builder =
                 RollingFileWriterBuilder::new_with_default_file_size(
                     pos_delete_parquet_writer,
+                    pos_delete_schema,
                     file_io.clone(),
                     pos_delete_location_gen,
                     pos_delete_file_name_gen,
@@ -881,10 +889,11 @@ mod tests {
                 DataFileFormat::Parquet,
             );
             let eq_delete_parquet_writer =
-                ParquetWriterBuilder::new(WriterProperties::builder().build(), eq_delete_schema);
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), eq_delete_schema.clone());
             let eq_delete_rolling_writer_builder =
                 RollingFileWriterBuilder::new_with_default_file_size(
                     eq_delete_parquet_writer,
+                    eq_delete_schema,
                     file_io.clone(),
                     eq_delete_location_gen,
                     eq_delete_file_name_gen,
@@ -948,6 +957,7 @@ mod tests {
                 ParquetWriterBuilder::new(WriterProperties::builder().build(), schema.clone());
             let data_rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
                 data_parquet_writer,
+                schema.clone(),
                 file_io.clone(),
                 data_location_gen,
                 data_file_name_gen,
@@ -967,10 +977,11 @@ mod tests {
                 DataFileFormat::Parquet,
             );
             let pos_delete_parquet_writer =
-                ParquetWriterBuilder::new(WriterProperties::builder().build(), pos_delete_schema);
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), pos_delete_schema.clone());
             let pos_delete_rolling_writer_builder =
                 RollingFileWriterBuilder::new_with_default_file_size(
                     pos_delete_parquet_writer,
+                    pos_delete_schema,
                     file_io.clone(),
                     pos_delete_location_gen,
                     pos_delete_file_name_gen,
@@ -994,10 +1005,11 @@ mod tests {
                 DataFileFormat::Parquet,
             );
             let eq_delete_parquet_writer =
-                ParquetWriterBuilder::new(WriterProperties::builder().build(), eq_delete_schema);
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), eq_delete_schema.clone());
             let eq_delete_rolling_writer_builder =
                 RollingFileWriterBuilder::new_with_default_file_size(
                     eq_delete_parquet_writer,
+                    eq_delete_schema,
                     file_io.clone(),
                     eq_delete_location_gen,
                     eq_delete_file_name_gen,
@@ -1076,6 +1088,7 @@ mod tests {
                 ParquetWriterBuilder::new(WriterProperties::builder().build(), schema.clone());
             let data_rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
                 data_parquet_writer,
+                schema.clone(),
                 file_io.clone(),
                 data_location_gen,
                 data_file_name_gen,
@@ -1095,10 +1108,11 @@ mod tests {
                 DataFileFormat::Parquet,
             );
             let pos_delete_parquet_writer =
-                ParquetWriterBuilder::new(WriterProperties::builder().build(), pos_delete_schema);
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), pos_delete_schema.clone());
             let pos_delete_rolling_writer_builder =
                 RollingFileWriterBuilder::new_with_default_file_size(
                     pos_delete_parquet_writer,
+                    pos_delete_schema,
                     file_io.clone(),
                     pos_delete_location_gen,
                     pos_delete_file_name_gen,
@@ -1122,10 +1136,11 @@ mod tests {
                 DataFileFormat::Parquet,
             );
             let eq_delete_parquet_writer =
-                ParquetWriterBuilder::new(WriterProperties::builder().build(), eq_delete_schema);
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), eq_delete_schema.clone());
             let eq_delete_rolling_writer_builder =
                 RollingFileWriterBuilder::new_with_default_file_size(
                     eq_delete_parquet_writer,
+                    eq_delete_schema,
                     file_io.clone(),
                     eq_delete_location_gen,
                     eq_delete_file_name_gen,
@@ -1180,6 +1195,7 @@ mod tests {
                 ParquetWriterBuilder::new(WriterProperties::builder().build(), schema.clone());
             let data_rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
                 data_parquet_writer,
+                schema.clone(),
                 file_io.clone(),
                 data_location_gen,
                 data_file_name_gen,
@@ -1199,10 +1215,11 @@ mod tests {
                 DataFileFormat::Parquet,
             );
             let pos_delete_parquet_writer =
-                ParquetWriterBuilder::new(WriterProperties::builder().build(), pos_delete_schema);
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), pos_delete_schema.clone());
             let pos_delete_rolling_writer_builder =
                 RollingFileWriterBuilder::new_with_default_file_size(
                     pos_delete_parquet_writer,
+                    pos_delete_schema,
                     file_io.clone(),
                     pos_delete_location_gen,
                     pos_delete_file_name_gen,
@@ -1226,10 +1243,11 @@ mod tests {
                 DataFileFormat::Parquet,
             );
             let eq_delete_parquet_writer =
-                ParquetWriterBuilder::new(WriterProperties::builder().build(), eq_delete_schema);
+                ParquetWriterBuilder::new(WriterProperties::builder().build(), eq_delete_schema.clone());
             let eq_delete_rolling_writer_builder =
                 RollingFileWriterBuilder::new_with_default_file_size(
                     eq_delete_parquet_writer,
+                    eq_delete_schema,
                     file_io.clone(),
                     eq_delete_location_gen,
                     eq_delete_file_name_gen,

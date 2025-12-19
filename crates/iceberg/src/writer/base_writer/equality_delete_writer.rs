@@ -423,15 +423,17 @@ mod test {
         let equality_ids = vec![0_i32, 8];
         let equality_config =
             EqualityDeleteWriterConfig::new(equality_ids, Arc::new(schema)).unwrap();
-        let delete_schema =
-            arrow_schema_to_schema(equality_config.projected_arrow_schema_ref()).unwrap();
+        let delete_schema = Arc::new(
+            arrow_schema_to_schema(equality_config.projected_arrow_schema_ref()).unwrap(),
+        );
         let projector = equality_config.projector.clone();
 
         // prepare writer
         let pb =
-            ParquetWriterBuilder::new(WriterProperties::builder().build(), Arc::new(delete_schema));
+            ParquetWriterBuilder::new(WriterProperties::builder().build(), delete_schema.clone());
         let rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
             pb,
+            delete_schema,
             file_io.clone(),
             location_gen,
             file_name_gen,
@@ -593,12 +595,13 @@ mod test {
         let equality_ids = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
         let config = EqualityDeleteWriterConfig::new(equality_ids, schema.clone()).unwrap();
         let delete_arrow_schema = config.projected_arrow_schema_ref().clone();
-        let delete_schema = arrow_schema_to_schema(&delete_arrow_schema).unwrap();
+        let delete_schema = Arc::new(arrow_schema_to_schema(&delete_arrow_schema).unwrap());
 
         let pb =
-            ParquetWriterBuilder::new(WriterProperties::builder().build(), Arc::new(delete_schema));
+            ParquetWriterBuilder::new(WriterProperties::builder().build(), delete_schema.clone());
         let rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
             pb,
+            delete_schema,
             file_io.clone(),
             location_gen,
             file_name_gen,

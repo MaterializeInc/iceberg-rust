@@ -225,9 +225,10 @@ impl ExecutionPlan for IcebergWriteExec {
         }
 
         // Create data file writer builder
+        let current_schema = self.table.metadata().current_schema().clone();
         let parquet_file_writer_builder = ParquetWriterBuilder::new_with_match_mode(
             WriterProperties::default(),
-            self.table.metadata().current_schema().clone(),
+            current_schema.clone(),
             FieldMatchMode::Name,
         );
         let target_file_size = match self
@@ -258,6 +259,7 @@ impl ExecutionPlan for IcebergWriteExec {
             DefaultFileNameGenerator::new(Uuid::now_v7().to_string(), None, file_format);
         let rolling_writer_builder = RollingFileWriterBuilder::new(
             parquet_file_writer_builder,
+            current_schema,
             target_file_size,
             file_io,
             location_generator,

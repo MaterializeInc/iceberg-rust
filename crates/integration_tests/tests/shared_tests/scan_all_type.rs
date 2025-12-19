@@ -153,12 +153,14 @@ async fn test_scan_all_type() {
         None,
         iceberg::spec::DataFileFormat::Parquet,
     );
+    let iceberg_schema = table.metadata().current_schema().clone();
     let parquet_writer_builder = ParquetWriterBuilder::new(
         WriterProperties::default(),
-        table.metadata().current_schema().clone(),
+        iceberg_schema.clone(),
     );
     let rolling_file_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
         parquet_writer_builder,
+        iceberg_schema,
         table.file_io().clone(),
         location_generator.clone(),
         file_name_generator.clone(),

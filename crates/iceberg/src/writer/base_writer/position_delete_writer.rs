@@ -284,9 +284,10 @@ mod tests {
 
         // Create writer
         let config = PositionDeleteWriterConfig::new(None, 0, None);
-        let pb = ParquetWriterBuilder::new(WriterProperties::builder().build(), schema);
+        let pb = ParquetWriterBuilder::new(WriterProperties::builder().build(), schema.clone());
         let rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
             pb,
+            schema,
             file_io.clone(),
             location_gen,
             file_name_gen,
@@ -336,9 +337,10 @@ mod tests {
         // Create writer with referenced data file
         let referenced_file = "s3://bucket/data/file1.parquet".to_string();
         let config = PositionDeleteWriterConfig::new(None, 0, Some(referenced_file.clone()));
-        let pb = ParquetWriterBuilder::new(WriterProperties::builder().build(), schema);
+        let pb = ParquetWriterBuilder::new(WriterProperties::builder().build(), schema.clone());
         let rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
             pb,
+            schema,
             file_io.clone(),
             location_gen,
             file_name_gen,
@@ -381,9 +383,10 @@ mod tests {
         let schema = Arc::new(arrow_schema_to_schema(&arrow_schema)?);
 
         let config = PositionDeleteWriterConfig::new(None, 0, None);
-        let pb = ParquetWriterBuilder::new(WriterProperties::builder().build(), schema);
+        let pb = ParquetWriterBuilder::new(WriterProperties::builder().build(), schema.clone());
         let rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
             pb,
+            schema,
             file_io.clone(),
             location_gen,
             file_name_gen,
@@ -422,9 +425,10 @@ mod tests {
         let schema = Arc::new(arrow_schema_to_schema(&arrow_schema)?);
 
         let config = PositionDeleteWriterConfig::new(None, 0, None);
-        let pb = ParquetWriterBuilder::new(WriterProperties::builder().build(), schema);
+        let pb = ParquetWriterBuilder::new(WriterProperties::builder().build(), schema.clone());
         let rolling_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
             pb,
+            schema,
             file_io.clone(),
             location_gen,
             file_name_gen,
