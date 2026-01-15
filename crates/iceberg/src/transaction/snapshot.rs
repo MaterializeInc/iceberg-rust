@@ -144,12 +144,6 @@ impl<'a> SnapshotProducer<'a> {
 
     pub(crate) fn validate_added_data_files(&self, added_data_files: &[DataFile]) -> Result<()> {
         for data_file in added_data_files {
-             if data_file.content_type() != crate::spec::DataContentType::Data {
-                 return Err(Error::new(
-                     ErrorKind::DataInvalid,
-                     "Only data content type is allowed for fast append",
-                 ));
-             }
             // Check if the data file partition spec id matches the table default partition spec id.
             if self.table.metadata().default_partition_spec_id() != data_file.partition_spec_id {
                 return Err(Error::new(
@@ -365,7 +359,8 @@ impl<'a> SnapshotProducer<'a> {
         // For details, please refer to https://github.com/apache/iceberg-rust/issues/1548
         if self.added_data_files.is_empty()
             && self.added_delete_files.is_empty()
-            && self.snapshot_properties.is_empty() {
+            && self.snapshot_properties.is_empty()
+        {
             return Err(Error::new(
                 ErrorKind::PreconditionFailed,
                 "No added data files, delete files, or snapshot properties found when write a manifest file",
