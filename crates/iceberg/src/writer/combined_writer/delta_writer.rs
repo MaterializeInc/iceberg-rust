@@ -4,7 +4,7 @@
 //! - A position delete file writer for deletions of existing rows (that have been written within this writer)
 //! - An equality delete file writer for deletions of rows based on equality conditions (for rows that may exist in other data files).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use arrow_array::builder::BooleanBuilder;
@@ -20,6 +20,10 @@ use crate::writer::base_writer::position_delete_writer::PositionDeleteWriterConf
 use crate::writer::{CurrentFileStatus, IcebergWriter, IcebergWriterBuilder};
 use crate::{Error, ErrorKind, Result};
 
+/// Default maximum number of rows to track for position deletes.
+/// This limits memory usage for large streaming workloads.
+pub const DEFAULT_MAX_SEEN_ROWS: usize = 100_000;
+
 /// A builder for `DeltaWriter`.
 #[derive(Clone, Debug)]
 pub struct DeltaWriterBuilder<DWB, PDWB, EDWB> {
@@ -27,6 +31,7 @@ pub struct DeltaWriterBuilder<DWB, PDWB, EDWB> {
     pos_delete_writer_builder: PDWB,
     eq_delete_writer_builder: EDWB,
     unique_cols: Vec<i32>,
+    max_seen_rows: usize,
 }
 
 impl<DWB, PDWB, EDWB> DeltaWriterBuilder<DWB, PDWB, EDWB> {
@@ -42,7 +47,18 @@ impl<DWB, PDWB, EDWB> DeltaWriterBuilder<DWB, PDWB, EDWB> {
             pos_delete_writer_builder,
             eq_delete_writer_builder,
             unique_cols,
+            max_seen_rows: DEFAULT_MAX_SEEN_ROWS,
         }
+    }
+
+    /// Sets the maximum number of rows to track for position deletes.
+    ///
+    /// When this limit is reached, the oldest tracked rows are evicted.
+    /// Deletes for evicted rows will use equality deletes instead of
+    /// position deletes. Default is [`DEFAULT_MAX_SEEN_ROWS`].
+    pub fn with_max_seen_rows(mut self, max_seen_rows: usize) -> Self {
+        self.max_seen_rows = max_seen_rows;
+        self
     }
 }
 
@@ -70,6 +86,7 @@ where
             pos_delete_writer,
             eq_delete_writer,
             self.unique_cols.clone(),
+            self.max_seen_rows,
         )
     }
 }
@@ -94,6 +111,10 @@ pub struct DeltaWriter<DW, PDW, EDW> {
     pub unique_cols: Vec<i32>,
     /// A map of rows (projected to unique columns) to their corresponding position information.
     pub seen_rows: HashMap<OwnedRow, Position>,
+    /// Tracks insertion order for seen_rows to enable FIFO eviction.
+    seen_rows_order: VecDeque<OwnedRow>,
+    /// Maximum number of rows to track for position deletes.
+    max_seen_rows: usize,
     /// A projector to project the record batch to the unique columns.
     pub(crate) projector: RecordBatchProjector,
     /// A converter to convert the projected columns to rows for easy comparison.
@@ -111,6 +132,7 @@ where
         pos_delete_writer: PDW,
         eq_delete_writer: EDW,
         unique_cols: Vec<i32>,
+        max_seen_rows: usize,
     ) -> Result<Self> {
         let projector = RecordBatchProjector::from_iceberg_schema(
             data_writer.current_schema(),
@@ -132,6 +154,8 @@ where
             eq_delete_writer,
             unique_cols,
             seen_rows: HashMap::new(),
+            seen_rows_order: VecDeque::new(),
+            max_seen_rows,
             projector,
             row_convertor,
         })
@@ -154,13 +178,33 @@ where
 
         // Record positions for each row in this batch
         for (i, row) in rows.iter().enumerate() {
-            self.seen_rows.insert(row.owned(), Position {
+            let owned_row = row.owned();
+            self.seen_rows.insert(owned_row.clone(), Position {
                 row_index: start_row_index as i64 + i as i64,
                 file_path: file_path.clone(),
             });
+            self.seen_rows_order.push_back(owned_row);
         }
 
+        // Evict oldest entries if we exceed the limit
+        self.evict_oldest_seen_rows();
+
         Ok(())
+    }
+
+    /// Evicts the oldest entries from seen_rows when the limit is exceeded.
+    /// Entries that were already deleted are skipped (stale entries in the order queue).
+    fn evict_oldest_seen_rows(&mut self) {
+        while self.seen_rows.len() > self.max_seen_rows {
+            if let Some(old_row) = self.seen_rows_order.pop_front() {
+                // Only count as eviction if the row still exists (wasn't already deleted)
+                self.seen_rows.remove(&old_row);
+            } else {
+                // Queue is empty but HashMap still has entries - this shouldn't happen
+                // in normal operation, but break to avoid infinite loop
+                break;
+            }
+        }
     }
 
     async fn delete(&mut self, batch: RecordBatch) -> Result<()> {
@@ -450,6 +494,7 @@ mod tests {
                 pos_delete_writer_instance,
                 eq_delete_writer_instance,
                 vec![1], // unique on id column
+                DEFAULT_MAX_SEEN_ROWS,
             )?;
 
             // Write batch with only inserts
@@ -569,6 +614,7 @@ mod tests {
                 pos_delete_writer_instance,
                 eq_delete_writer_instance,
                 vec![1],
+                DEFAULT_MAX_SEEN_ROWS,
             )?;
 
             // First, insert some rows
@@ -704,6 +750,7 @@ mod tests {
                 pos_delete_writer_instance,
                 eq_delete_writer_instance,
                 vec![1],
+                DEFAULT_MAX_SEEN_ROWS,
             )?;
 
             // Delete rows that were never inserted (should create equality deletes)
@@ -815,6 +862,7 @@ mod tests {
                 pos_delete_writer_instance,
                 eq_delete_writer_instance,
                 vec![1],
+                DEFAULT_MAX_SEEN_ROWS,
             )?;
 
             // Invalid operation code
