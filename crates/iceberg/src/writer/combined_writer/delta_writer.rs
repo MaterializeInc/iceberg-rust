@@ -56,6 +56,10 @@ impl<DWB, PDWB, EDWB> DeltaWriterBuilder<DWB, PDWB, EDWB> {
     /// When this limit is reached, the oldest tracked rows are evicted.
     /// Deletes for evicted rows will use equality deletes instead of
     /// position deletes. Default is [`DEFAULT_MAX_SEEN_ROWS`].
+    ///
+    /// Set to `0` to disable row tracking entirely, causing all deletes
+    /// to use equality deletes. This eliminates memory overhead but may
+    /// reduce read performance.
     pub fn with_max_seen_rows(mut self, max_seen_rows: usize) -> Self {
         self.max_seen_rows = max_seen_rows;
         self
@@ -162,7 +166,6 @@ where
     }
 
     async fn insert(&mut self, batch: RecordBatch) -> Result<()> {
-        let rows = self.extract_unique_column_rows(&batch)?;
         let batch_num_rows = batch.num_rows();
 
         // Write first to ensure the data is persisted before updating our tracking state.
@@ -170,6 +173,13 @@ where
         // Note: We must write before calling current_file_path() because the underlying
         // writer may not have created the file yet (lazy initialization).
         self.data_writer.write(batch.clone()).await?;
+
+        // Skip row tracking if disabled (max_seen_rows == 0)
+        if self.max_seen_rows == 0 {
+            return Ok(());
+        }
+
+        let rows = self.extract_unique_column_rows(&batch)?;
 
         // Get file path and calculate start_row_index after successful write
         let file_path = self.data_writer.current_file_path();
@@ -208,6 +218,15 @@ where
     }
 
     async fn delete(&mut self, batch: RecordBatch) -> Result<()> {
+        // If row tracking is disabled, write all deletes as equality deletes
+        if self.max_seen_rows == 0 {
+            self.eq_delete_writer
+                .write(batch)
+                .await
+                .map_err(|e| Error::new(ErrorKind::Unexpected, format!("{e}")))?;
+            return Ok(());
+        }
+
         let rows = self.extract_unique_column_rows(&batch)?;
         let mut file_array = vec![];
         let mut row_index_array = vec![];
