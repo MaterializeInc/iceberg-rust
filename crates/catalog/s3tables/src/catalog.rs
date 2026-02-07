@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::any::Any;
 use std::collections::HashMap;
 use std::future::Future;
 
@@ -25,7 +26,7 @@ use aws_sdk_s3tables::operation::get_table::GetTableOutput;
 use aws_sdk_s3tables::operation::list_tables::ListTablesOutput;
 use aws_sdk_s3tables::operation::update_table_metadata_location::UpdateTableMetadataLocationError;
 use aws_sdk_s3tables::types::OpenTableFormat;
-use iceberg::io::{FileIO, FileIOBuilder};
+use iceberg::io::{self, FileIO, FileIOBuilder};
 use iceberg::spec::{TableMetadata, TableMetadataBuilder};
 use iceberg::table::Table;
 use iceberg::{
@@ -170,6 +171,8 @@ pub struct S3TablesCatalog {
     config: S3TablesCatalogConfig,
     s3tables_client: aws_sdk_s3tables::Client,
     file_io: FileIO,
+    /// Extensions for the FileIOBuilder.
+    file_io_extensions: io::Extensions,
 }
 
 impl S3TablesCatalog {
@@ -188,7 +191,25 @@ impl S3TablesCatalog {
             config,
             s3tables_client,
             file_io,
+            file_io_extensions: io::Extensions::default(),
         })
+    }
+
+    /// Add an extension to the file IO builder.
+    ///
+    /// This allows passing custom extensions (like CustomAwsCredentialLoader) for
+    /// advanced credential management scenarios such as AssumeRole chains.
+    pub fn with_file_io_extension<T: Any + Send + Sync>(mut self, ext: T) -> Self {
+        self.file_io_extensions.add(ext);
+        // Rebuild the file_io with the new extensions
+        if let Ok(file_io) = FileIOBuilder::new("s3")
+            .with_props(&self.config.props)
+            .with_extensions(self.file_io_extensions.clone())
+            .build()
+        {
+            self.file_io = file_io;
+        }
+        self
     }
 
     async fn load_table_with_version_token(
