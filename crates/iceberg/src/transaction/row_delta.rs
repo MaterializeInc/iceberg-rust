@@ -176,7 +176,6 @@ impl TransactionAction for RowDeltaAction {
         // Check duplicate files
         if self.check_duplicate {
             snapshot_producer.validate_duplicate_files().await?;
-            snapshot_producer.validate_duplicate_files().await?;
         }
 
         snapshot_producer
