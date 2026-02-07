@@ -18,8 +18,10 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::future::Future;
+use std::time::Instant;
 
 use async_trait::async_trait;
+use tracing::debug;
 use aws_sdk_s3tables::operation::create_table::CreateTableOutput;
 use aws_sdk_s3tables::operation::get_namespace::GetNamespaceOutput;
 use aws_sdk_s3tables::operation::get_table::GetTableOutput;
@@ -619,19 +621,46 @@ impl Catalog for S3TablesCatalog {
 
     /// Updates an existing table within the s3tables catalog.
     async fn update_table(&self, commit: TableCommit) -> Result<Table> {
+        let overall_start = Instant::now();
         let table_ident = commit.identifier().clone();
         let table_namespace = table_ident.namespace();
+
+        debug!(
+            table = %table_ident,
+            "s3tables: starting table update"
+        );
+
+        let load_start = Instant::now();
         let (current_table, version_token) =
             self.load_table_with_version_token(&table_ident).await?;
+        debug!(
+            table = %table_ident,
+            duration_ms = load_start.elapsed().as_millis(),
+            "s3tables: loaded current table and version token"
+        );
 
+        let apply_start = Instant::now();
         let staged_table = commit.apply(current_table)?;
         let staged_metadata_location = staged_table.metadata_location_result()?;
+        debug!(
+            table = %table_ident,
+            duration_ms = apply_start.elapsed().as_millis(),
+            metadata_location = %staged_metadata_location,
+            "s3tables: applied commit and staged metadata"
+        );
 
+        let write_start = Instant::now();
         staged_table
             .metadata()
             .write_to(staged_table.file_io(), staged_metadata_location)
             .await?;
+        debug!(
+            table = %table_ident,
+            duration_ms = write_start.elapsed().as_millis(),
+            "s3tables: wrote metadata to storage"
+        );
 
+        let api_start = Instant::now();
         let builder = self
             .s3tables_client
             .update_table_metadata_location()
@@ -660,6 +689,18 @@ impl Catalog for S3TablesCatalog {
             }
             .with_source(anyhow::Error::msg(format!("aws sdk error: {error:?}")))
         })?;
+
+        debug!(
+            table = %table_ident,
+            duration_ms = api_start.elapsed().as_millis(),
+            "s3tables: updated table metadata location via API"
+        );
+
+        debug!(
+            table = %table_ident,
+            total_duration_ms = overall_start.elapsed().as_millis(),
+            "s3tables: table update complete"
+        );
 
         Ok(staged_table)
     }

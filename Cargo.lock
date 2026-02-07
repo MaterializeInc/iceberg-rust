@@ -3547,6 +3547,7 @@ dependencies = [
  "iceberg_test_utils",
  "itertools 0.13.0",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
