@@ -60,7 +60,7 @@ where
 }
 
 /// Config for `EqualityDeleteWriter`.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct EqualityDeleteWriterConfig {
     // Field ids used to determine row equality in equality delete files.
     equality_ids: Vec<i32>,
@@ -423,9 +423,8 @@ mod test {
         let equality_ids = vec![0_i32, 8];
         let equality_config =
             EqualityDeleteWriterConfig::new(equality_ids, Arc::new(schema)).unwrap();
-        let delete_schema = Arc::new(
-            arrow_schema_to_schema(equality_config.projected_arrow_schema_ref()).unwrap(),
-        );
+        let delete_schema =
+            Arc::new(arrow_schema_to_schema(equality_config.projected_arrow_schema_ref()).unwrap());
         let projector = equality_config.projector.clone();
 
         // prepare writer
