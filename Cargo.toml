@@ -111,7 +111,7 @@ port_scanner = "0.1.5"
 pretty_assertions = "1.4"
 rand = "0.8.5"
 regex = "1.11.3"
-reqwest = { version = "0.12.12", default-features = false, features = ["json", "native-tls"] }
+reqwest = { version = "0.12.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
 roaring = { version = "0.11" }
 rust_decimal = "1.37.2"
 serde = { version = "1.0.219", features = ["rc"] }
