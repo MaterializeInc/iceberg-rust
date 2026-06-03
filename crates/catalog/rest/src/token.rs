@@ -281,14 +281,14 @@ impl OAuth2TokenProvider {
 impl TokenProvider for OAuth2TokenProvider {
     /// Fetch a new token if we don't already have one cached.
     async fn token(&self) -> Result<String> {
-        if let Some(token) = self.cached_token.lock().await.clone() {
+        let mut cached = self.cached_token.lock().await;
+
+        if let Some(token) = cached.clone() {
             return Ok(token);
         }
 
-        // Don't do anything fancy.
-        // If we have multiple concurrent attempts to fetch a new token, so be it.
         let token = self.exchange_credential_for_token().await?;
-        *self.cached_token.lock().await = Some(token.clone());
+        *cached = Some(token.clone());
         Ok(token)
     }
 
@@ -299,8 +299,8 @@ impl TokenProvider for OAuth2TokenProvider {
 
     /// Try fetching and caching a new token. If that fails, keep the old token.
     async fn regenerate(&self) -> Result<()> {
-        let token = self.exchange_credential_for_token().await?;
-        *self.cached_token.lock().await = Some(token);
+        let mut cached = self.cached_token.lock().await;
+        *cached = Some(self.exchange_credential_for_token().await?);
         Ok(())
     }
 }
