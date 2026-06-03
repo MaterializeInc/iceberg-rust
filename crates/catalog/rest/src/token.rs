@@ -25,6 +25,7 @@
 //!  - Use [`BearerTokenAuthenticator`] to wrap a [`TokenProvider`] into a [`RequestAuthenticator`].
 
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -43,7 +44,7 @@ use crate::{ErrorResponse, TokenResponse};
 /// callers that just need to attach a bearer token should typically implement
 /// [`TokenProvider`] and rely on the [`BearerTokenAuthenticator`] adapter.
 #[async_trait]
-pub trait RequestAuthenticator: Send + Sync + std::fmt::Debug {
+pub trait RequestAuthenticator: Send + Sync + Debug {
     /// Apply authentication to the outgoing request.
     async fn authenticate_request(&self, req: &mut Request) -> Result<()>;
 
@@ -62,7 +63,7 @@ pub trait RequestAuthenticator: Send + Sync + std::fmt::Debug {
 /// Produces bearer tokens for authenticated REST catalog requests.
 /// Caching, expiry, and refresh are up to the implementer.
 #[async_trait]
-pub trait TokenProvider: Send + Sync + std::fmt::Debug {
+pub trait TokenProvider: Send + Sync + Debug {
     /// Get a token for the next request.
     async fn token(&self) -> Result<String>;
 
@@ -110,9 +111,15 @@ impl RequestAuthenticator for BearerTokenAuthenticator {
 }
 
 /// Always produce the same bearer token.
-#[derive(Debug)]
 pub struct StaticTokenProvider {
     token: String,
+}
+
+impl Debug for StaticTokenProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StaticTokenProvider")
+            .finish_non_exhaustive()
+    }
 }
 
 impl StaticTokenProvider {
@@ -142,7 +149,6 @@ impl TokenProvider for StaticTokenProvider {
 }
 
 /// Use the standard OAuth2 flow to obtain bearer tokens.
-#[derive(Debug)]
 pub struct OAuth2TokenProvider {
     client: Client,
 
@@ -162,6 +168,26 @@ pub struct OAuth2TokenProvider {
 
     /// Most recently fetched token.
     cached_token: Mutex<Option<String>>,
+}
+
+impl Debug for OAuth2TokenProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Omit `client_secret` and `cached_token`: they're secrets. For
+        // `extra_headers`/`extra_oauth_params` show only the keys, since the
+        // values may carry secrets (e.g. a Basic `Authorization` header).
+        f.debug_struct("OAuth2TokenProvider")
+            .field("client_id", &self.client_id)
+            .field("token_endpoint", &self.token_endpoint)
+            .field(
+                "extra_headers",
+                &self.extra_headers.keys().collect::<Vec<_>>(),
+            )
+            .field(
+                "extra_oauth_params",
+                &self.extra_oauth_params.keys().collect::<Vec<_>>(),
+            )
+            .finish_non_exhaustive()
+    }
 }
 
 impl OAuth2TokenProvider {
@@ -221,13 +247,14 @@ impl OAuth2TokenProvider {
                 .await
                 .map_err(|err| err.with_url(auth_url.clone()))?;
             Ok(serde_json::from_slice(&text).map_err(|e| {
+                // We omit the response text from the error context
+                // because an OK response could include an auth token (even if we can't parse it).
                 Error::new(
                     ErrorKind::Unexpected,
                     "Failed to parse response from OAuth2 token provider!",
                 )
                 .with_context("operation", "auth")
                 .with_context("url", auth_url.to_string())
-                .with_context("json", String::from_utf8_lossy(&text))
                 .with_source(e)
             })?)
         } else {
