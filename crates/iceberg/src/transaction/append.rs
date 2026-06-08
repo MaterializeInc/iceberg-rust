@@ -81,10 +81,19 @@ impl TransactionAction for FastAppendAction {
             self.commit_uuid.unwrap_or_else(Uuid::now_v7),
             self.snapshot_properties.clone(),
             self.added_data_files.clone(),
+            vec![], // fast append doesn't support delete files
         );
 
-        // validate added files
-        snapshot_producer.validate_added_data_files()?;
+        // validate added files - ensure they are Data content type
+        for data_file in &self.added_data_files {
+            if data_file.content_type() != crate::spec::DataContentType::Data {
+                return Err(crate::Error::new(
+                    crate::ErrorKind::DataInvalid,
+                    "Only data content type is allowed for fast append",
+                ));
+            }
+        }
+        snapshot_producer.validate_added_data_files(&self.added_data_files)?;
 
         // Checks duplicate files
         if self.check_duplicate {
