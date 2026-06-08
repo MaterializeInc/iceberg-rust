@@ -77,12 +77,12 @@ async fn test_append_data_file_conflict() {
         None,
         iceberg::spec::DataFileFormat::Parquet,
     );
-    let parquet_writer_builder = ParquetWriterBuilder::new(
-        WriterProperties::default(),
-        table.metadata().current_schema().clone(),
-    );
+    let iceberg_schema = table.metadata().current_schema().clone();
+    let parquet_writer_builder =
+        ParquetWriterBuilder::new(WriterProperties::default(), iceberg_schema.clone());
     let rolling_file_writer_builder = RollingFileWriterBuilder::new_with_default_file_size(
         parquet_writer_builder,
+        iceberg_schema,
         table.file_io().clone(),
         location_generator.clone(),
         file_name_generator.clone(),
