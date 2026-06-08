@@ -20,7 +20,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use arrow_schema::SchemaRef as ArrowSchemaRef;
+use arrow_array::RecordBatch;
+use arrow_schema::{DataType, Field, Schema as ArrowSchema};
 use bytes::Bytes;
 use futures::future::BoxFuture;
 use itertools::Itertools;
@@ -52,6 +53,10 @@ pub struct ParquetWriterBuilder {
     props: WriterProperties,
     schema: SchemaRef,
     match_mode: FieldMatchMode,
+    /// Optional Arrow schema to use for writing. If provided, this schema is used
+    /// directly for the Parquet writer instead of converting from the Iceberg schema.
+    /// This allows preserving Arrow extension metadata in the output.
+    arrow_schema: Option<Arc<ArrowSchema>>,
 }
 
 impl ParquetWriterBuilder {
@@ -75,6 +80,7 @@ impl ParquetWriterBuilder {
             props,
             schema,
             match_mode,
+            arrow_schema: None,
         }
     }
 
@@ -108,6 +114,16 @@ impl ParquetWriterBuilder {
         self.match_mode = match_mode;
         self
     }
+
+    /// Set an Arrow schema to use for writing instead of deriving one from the Iceberg schema.
+    /// The Arrow schema's structure must match the Iceberg schema (field names, types, nullability),
+    /// but may contain additional metadata (e.g., Arrow extension types).
+    /// Returns an error if the schemas don't match structurally.
+    pub fn with_arrow_schema(mut self, arrow_schema: Arc<ArrowSchema>) -> Result<Self> {
+        validate_arrow_schema_matches_iceberg(&arrow_schema, &self.schema)?;
+        self.arrow_schema = Some(arrow_schema);
+        Ok(self)
+    }
 }
 
 impl FileWriterBuilder for ParquetWriterBuilder {
@@ -116,6 +132,7 @@ impl FileWriterBuilder for ParquetWriterBuilder {
     async fn build(&self, output_file: OutputFile) -> Result<Self::R> {
         Ok(ParquetWriter {
             schema: self.schema.clone(),
+            arrow_schema: self.arrow_schema.clone(),
             inner_writer: None,
             writer_properties: self.props.clone(),
             current_row_num: 0,
@@ -246,6 +263,9 @@ impl SchemaVisitor for IndexByParquetPathName {
 /// `ParquetWriter`` is used to write arrow data into parquet file on storage.
 pub struct ParquetWriter {
     schema: SchemaRef,
+    /// Optional Arrow schema to use for writing. If provided, this is used directly
+    /// instead of converting from the Iceberg schema, preserving any extension metadata.
+    arrow_schema: Option<Arc<ArrowSchema>>,
     output_file: OutputFile,
     inner_writer: Option<AsyncArrowWriter<AsyncFileWriter>>,
     writer_properties: WriterProperties,
@@ -507,8 +527,113 @@ impl ParquetWriter {
     }
 }
 
+/// Validate that an Arrow schema's structure matches an Iceberg schema.
+/// This checks field names, types, and nullability, but ignores metadata differences.
+fn validate_arrow_schema_matches_iceberg(
+    arrow_schema: &ArrowSchema,
+    iceberg_schema: &crate::spec::Schema,
+) -> Result<()> {
+    let expected: ArrowSchema = iceberg_schema.try_into()?;
+    validate_schemas_match(&expected, arrow_schema, "")
+}
+
+fn validate_schemas_match(expected: &ArrowSchema, actual: &ArrowSchema, path: &str) -> Result<()> {
+    if expected.fields().len() != actual.fields().len() {
+        return Err(Error::new(
+            ErrorKind::DataInvalid,
+            format!(
+                "Schema mismatch at '{}': expected {} fields, got {}",
+                path,
+                expected.fields().len(),
+                actual.fields().len()
+            ),
+        ));
+    }
+    for (e, a) in expected.fields().iter().zip(actual.fields().iter()) {
+        validate_fields_match(e, a, path)?;
+    }
+    Ok(())
+}
+
+fn validate_fields_match(expected: &Field, actual: &Field, parent_path: &str) -> Result<()> {
+    let path = if parent_path.is_empty() {
+        expected.name().to_string()
+    } else {
+        format!("{}.{}", parent_path, expected.name())
+    };
+
+    if expected.name() != actual.name() {
+        return Err(Error::new(
+            ErrorKind::DataInvalid,
+            format!(
+                "Field name mismatch at '{}': expected '{}', got '{}'",
+                parent_path,
+                expected.name(),
+                actual.name()
+            ),
+        ));
+    }
+
+    if expected.is_nullable() != actual.is_nullable() {
+        return Err(Error::new(
+            ErrorKind::DataInvalid,
+            format!(
+                "Nullability mismatch at '{}': expected {}, got {}",
+                path,
+                expected.is_nullable(),
+                actual.is_nullable()
+            ),
+        ));
+    }
+
+    validate_datatypes_match(expected.data_type(), actual.data_type(), &path)
+}
+
+fn validate_datatypes_match(expected: &DataType, actual: &DataType, path: &str) -> Result<()> {
+    // Compare types structurally, ignoring metadata
+    match (expected, actual) {
+        (DataType::Struct(e_fields), DataType::Struct(a_fields)) => {
+            if e_fields.len() != a_fields.len() {
+                return Err(Error::new(
+                    ErrorKind::DataInvalid,
+                    format!(
+                        "Struct field count mismatch at '{}': expected {}, got {}",
+                        path,
+                        e_fields.len(),
+                        a_fields.len()
+                    ),
+                ));
+            }
+            for (e, a) in e_fields.iter().zip(a_fields.iter()) {
+                validate_fields_match(e, a, path)?;
+            }
+            Ok(())
+        }
+        (DataType::List(e_inner), DataType::List(a_inner))
+        | (DataType::LargeList(e_inner), DataType::LargeList(a_inner)) => {
+            validate_fields_match(e_inner, a_inner, path)
+        }
+        (DataType::Map(e_entries, _), DataType::Map(a_entries, _)) => {
+            validate_fields_match(e_entries, a_entries, path)
+        }
+        _ => {
+            // For primitive types, use direct comparison (metadata not relevant)
+            if std::mem::discriminant(expected) != std::mem::discriminant(actual) {
+                return Err(Error::new(
+                    ErrorKind::DataInvalid,
+                    format!(
+                        "Type mismatch at '{}': expected {:?}, got {:?}",
+                        path, expected, actual
+                    ),
+                ));
+            }
+            Ok(())
+        }
+    }
+}
+
 impl FileWriter for ParquetWriter {
-    async fn write(&mut self, batch: &arrow_array::RecordBatch) -> Result<()> {
+    async fn write(&mut self, batch: &RecordBatch) -> Result<()> {
         // Skip empty batch
         if batch.num_rows() == 0 {
             return Ok(());
@@ -516,20 +641,23 @@ impl FileWriter for ParquetWriter {
 
         self.current_row_num += batch.num_rows();
 
-        let batch_c = batch.clone();
         self.nan_value_count_visitor
-            .compute(self.schema.clone(), batch_c)?;
+            .compute(self.schema.clone(), batch.clone())?;
 
-        // Lazy initialize the writer
         let writer = if let Some(writer) = &mut self.inner_writer {
             writer
         } else {
-            let arrow_schema: ArrowSchemaRef = Arc::new(self.schema.as_ref().try_into()?);
+            // Use the provided Arrow schema if available, otherwise derive from Iceberg schema.
+            // Using a provided Arrow schema allows preserving extension metadata in the output.
+            let arrow_schema: Arc<ArrowSchema> = match &self.arrow_schema {
+                Some(schema) => Arc::clone(schema),
+                None => Arc::new(self.schema.as_ref().try_into()?),
+            };
             let inner_writer = self.output_file.writer().await?;
             let async_writer = AsyncFileWriter::new(inner_writer);
             let writer = AsyncArrowWriter::try_new(
                 async_writer,
-                arrow_schema.clone(),
+                arrow_schema,
                 Some(self.writer_properties.clone()),
             )
             .map_err(|err| {
