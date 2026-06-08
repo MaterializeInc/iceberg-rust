@@ -227,11 +227,10 @@ impl ExecutionPlan for IcebergWriteExec {
         // Build the writer from the already-parsed table properties so it honors
         // `write.parquet.*` settings (e.g. CDC). Arrow batches flowing through
         // DataFusion carry no field-id metadata, so match fields by name.
-        let parquet_file_writer_builder = ParquetWriterBuilder::from_table_properties(
-            &table_props,
-            self.table.metadata().current_schema().clone(),
-        )
-        .with_match_mode(FieldMatchMode::Name);
+        let current_schema = self.table.metadata().current_schema().clone();
+        let parquet_file_writer_builder =
+            ParquetWriterBuilder::from_table_properties(&table_props, current_schema.clone())
+                .with_match_mode(FieldMatchMode::Name);
         let target_file_size = table_props.write_target_file_size_bytes;
 
         let file_io = self.table.file_io().clone();
@@ -243,6 +242,7 @@ impl ExecutionPlan for IcebergWriteExec {
             DefaultFileNameGenerator::new(Uuid::now_v7().to_string(), None, file_format);
         let rolling_writer_builder = RollingFileWriterBuilder::new(
             parquet_file_writer_builder,
+            current_schema,
             target_file_size,
             file_io,
             location_generator,
