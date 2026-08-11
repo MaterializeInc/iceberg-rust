@@ -2736,7 +2736,6 @@ mod tests {
                 .build(),
             Some(Arc::new(LocalFsStorageFactory)),
             Runtime::current(),
-            None,
         );
 
         let table = catalog
@@ -2776,7 +2775,6 @@ mod tests {
             RestCatalogConfig::builder().uri(server.url()).build(),
             Some(Arc::new(LocalFsStorageFactory)),
             Runtime::current(),
-            None,
         );
 
         catalog
