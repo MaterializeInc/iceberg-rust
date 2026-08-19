@@ -343,11 +343,11 @@ pub struct TableCreation {
 
 /// TableCommit represents the commit of a table in the catalog.
 ///
-/// The builder is marked as private since it's dangerous and error-prone to construct
-/// [`TableCommit`] directly.
-/// Users are supposed to use [`crate::transaction::Transaction`] to update table.
+/// Most users should use [`crate::transaction::Transaction`] to update a table,
+/// which builds this internally. Construct it directly only when managing the
+/// commit yourself, from the updates and requirements produced by a
+/// [`crate::transaction::TransactionAction`].
 #[derive(Debug, TypedBuilder)]
-#[builder(build_method(vis = "pub(crate)"))]
 pub struct TableCommit {
     /// The table ident.
     ident: TableIdent,

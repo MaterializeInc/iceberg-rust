@@ -34,9 +34,16 @@ pub(crate) type BoxedTransactionAction = Arc<dyn TransactionAction>;
 /// Each action is responsible for generating the updates and requirements needed
 /// to modify the table metadata.
 #[async_trait]
-pub(crate) trait TransactionAction: AsAny + Sync + Send {
+pub trait TransactionAction: AsAny + Sync + Send {
     /// Commits this action against the provided table and returns the resulting updates.
-    /// NOTE: This function is intended for internal use only and should not be called directly by users.
+    /// NOTE: Most users should apply actions through [`Transaction`], which handles
+    /// rebasing onto the latest table state and retrying on commit conflicts. Call
+    /// this directly only to take over that responsibility yourself, passing the
+    /// resulting updates and requirements to [`Catalog::update_table`] via
+    /// [`TableCommit`].
+    ///
+    /// [`Catalog::update_table`]: crate::Catalog::update_table
+    /// [`TableCommit`]: crate::TableCommit
     ///
     /// # Arguments
     ///
