@@ -168,6 +168,10 @@ pub struct OAuth2TokenProvider {
 
     /// Most recently fetched token.
     cached_token: Mutex<Option<String>>,
+
+    /// Expiration time of the cached token, if known. If `None`, we don't know when it expires.
+    /// If the token is expired, we will fetch a new one.
+    cached_token_expiration: Mutex<Option<std::time::Instant>>,
 }
 
 impl Debug for OAuth2TokenProvider {
@@ -199,7 +203,6 @@ impl OAuth2TokenProvider {
         token_endpoint: String,
         extra_headers: HeaderMap,
         extra_oauth_params: HashMap<String, String>,
-        cached_token: Option<String>,
     ) -> Self {
         Self {
             client,
@@ -208,12 +211,13 @@ impl OAuth2TokenProvider {
             token_endpoint,
             extra_headers,
             extra_oauth_params,
-            cached_token: Mutex::new(cached_token),
+            cached_token: Mutex::new(None),
+            cached_token_expiration: Mutex::new(None),
         }
     }
 
     /// Just fetch a token. Don't store it or do anything else.
-    async fn exchange_credential_for_token(&self) -> Result<String> {
+    async fn exchange_credential_for_token(&self) -> Result<(String, Option<u64>)> {
         let mut params = HashMap::with_capacity(4);
         params.insert("grant_type", "client_credentials");
         if let Some(client_id) = &self.client_id {
@@ -273,7 +277,7 @@ impl OAuth2TokenProvider {
             })?;
             Err(Error::from(e))
         }?;
-        Ok(auth_res.access_token)
+        Ok((auth_res.access_token, auth_res.expires_in))
     }
 }
 
@@ -282,25 +286,35 @@ impl TokenProvider for OAuth2TokenProvider {
     /// Fetch a new token if we don't already have one cached.
     async fn token(&self) -> Result<String> {
         let mut cached = self.cached_token.lock().await;
+        let mut cached_expiration = self.cached_token_expiration.lock().await;
 
-        if let Some(token) = cached.clone() {
+        if let Some(token) = cached.clone()
+            && cached_expiration.is_none_or(|exp| std::time::Instant::now() < exp)
+        {
             return Ok(token);
         }
 
-        let token = self.exchange_credential_for_token().await?;
+        let (token, expires_in) = self.exchange_credential_for_token().await?;
         *cached = Some(token.clone());
+        *cached_expiration =
+            expires_in.map(|secs| std::time::Instant::now() + std::time::Duration::from_secs(secs));
         Ok(token)
     }
 
     async fn invalidate(&self) -> Result<()> {
         *self.cached_token.lock().await = None;
+        *self.cached_token_expiration.lock().await = None;
         Ok(())
     }
 
     /// Try fetching and caching a new token. If that fails, keep the old token.
     async fn regenerate(&self) -> Result<()> {
         let mut cached = self.cached_token.lock().await;
-        *cached = Some(self.exchange_credential_for_token().await?);
+        let mut cached_expiration = self.cached_token_expiration.lock().await;
+        let (token, expires_in) = self.exchange_credential_for_token().await?;
+        *cached = Some(token);
+        *cached_expiration =
+            expires_in.map(|secs| std::time::Instant::now() + std::time::Duration::from_secs(secs));
         Ok(())
     }
 }

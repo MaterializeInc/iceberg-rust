@@ -171,7 +171,7 @@ impl<'de> serde_core::de::Deserialize<'de> for iceberg_catalog_rest::NamespaceRe
 pub fn iceberg_catalog_rest::NamespaceResponse::deserialize<__D>(__deserializer: __D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 pub struct iceberg_catalog_rest::OAuth2TokenProvider
 impl iceberg_catalog_rest::OAuth2TokenProvider
-pub fn iceberg_catalog_rest::OAuth2TokenProvider::new(client: reqwest::async_impl::client::Client, client_id: core::option::Option<alloc::string::String>, client_secret: alloc::string::String, token_endpoint: alloc::string::String, extra_headers: http::header::map::HeaderMap, extra_oauth_params: std::collections::hash::map::HashMap<alloc::string::String, alloc::string::String>, cached_token: core::option::Option<alloc::string::String>) -> Self
+pub fn iceberg_catalog_rest::OAuth2TokenProvider::new(client: reqwest::async_impl::client::Client, client_id: core::option::Option<alloc::string::String>, client_secret: alloc::string::String, token_endpoint: alloc::string::String, extra_headers: http::header::map::HeaderMap, extra_oauth_params: std::collections::hash::map::HashMap<alloc::string::String, alloc::string::String>) -> Self
 impl core::fmt::Debug for iceberg_catalog_rest::OAuth2TokenProvider
 pub fn iceberg_catalog_rest::OAuth2TokenProvider::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl iceberg_catalog_rest::TokenProvider for iceberg_catalog_rest::OAuth2TokenProvider

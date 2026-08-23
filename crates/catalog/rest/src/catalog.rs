@@ -244,8 +244,6 @@ impl AuthenticatorConfig {
                 self.token_endpoint.clone(),
                 extra_headers,
                 self.extra_oauth_params.clone(),
-                // If there's a preexisting token, seed the cache with that token.
-                self.token.clone(),
             ));
             return Some(Arc::new(BearerTokenAuthenticator::new(provider)));
         }
