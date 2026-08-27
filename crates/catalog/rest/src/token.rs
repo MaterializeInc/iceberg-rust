@@ -27,6 +27,7 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use http::{Method, StatusCode};
@@ -171,7 +172,7 @@ pub struct OAuth2TokenProvider {
 
     /// Expiration time of the cached token, if known. If `None`, we don't know when it expires.
     /// If the token is expired, we will fetch a new one.
-    cached_token_expiration: Mutex<Option<std::time::Instant>>,
+    cached_token_expiration: Mutex<Option<Instant>>,
 }
 
 impl Debug for OAuth2TokenProvider {
@@ -281,6 +282,12 @@ impl OAuth2TokenProvider {
     }
 }
 
+/// How far ahead of expiry a cached token is replaced.
+///
+/// A token handed out at the very edge of its lifetime can expire while the request carrying it
+/// is still in flight, so it is retired early instead.
+const REFRESH_MARGIN: Duration = Duration::from_secs(600);
+
 #[async_trait]
 impl TokenProvider for OAuth2TokenProvider {
     /// Fetch a new token if we don't already have one cached.
@@ -289,15 +296,17 @@ impl TokenProvider for OAuth2TokenProvider {
         let mut cached_expiration = self.cached_token_expiration.lock().await;
 
         if let Some(token) = cached.clone()
-            && cached_expiration.is_none_or(|exp| std::time::Instant::now() < exp)
+            && cached_expiration.is_none_or(|exp| Instant::now() + REFRESH_MARGIN < exp)
         {
             return Ok(token);
         }
 
         let (token, expires_in) = self.exchange_credential_for_token().await?;
+        // Resolve the expiry before touching the cache, so a failure here leaves the previous
+        // token and its expiry paired rather than storing a new token against a stale expiry.
+        let expiration = expiration_instant(expires_in)?;
         *cached = Some(token.clone());
-        *cached_expiration =
-            expires_in.map(|secs| std::time::Instant::now() + std::time::Duration::from_secs(secs));
+        *cached_expiration = expiration;
         Ok(token)
     }
 
@@ -312,9 +321,30 @@ impl TokenProvider for OAuth2TokenProvider {
         let mut cached = self.cached_token.lock().await;
         let mut cached_expiration = self.cached_token_expiration.lock().await;
         let (token, expires_in) = self.exchange_credential_for_token().await?;
+        let expiration = expiration_instant(expires_in)?;
         *cached = Some(token);
-        *cached_expiration =
-            expires_in.map(|secs| std::time::Instant::now() + std::time::Duration::from_secs(secs));
+        *cached_expiration = expiration;
         Ok(())
     }
+}
+
+/// Converts an OAuth2 `expires_in` lifetime into the instant the token goes stale.
+///
+/// `None` means the server reported no lifetime, which callers read as "never expires".
+/// A lifetime so large that it overflows the monotonic clock is an error rather than `None`,
+/// since silently treating it as non-expiring would keep a dead token forever.
+fn expiration_instant(expires_in: Option<u64>) -> Result<Option<Instant>> {
+    expires_in
+        .map(|secs| {
+            Instant::now()
+                .checked_add(Duration::from_secs(secs))
+                .ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::Unexpected,
+                        "OAuth2 token lifetime overflows the monotonic clock",
+                    )
+                    .with_context("expires_in", secs.to_string())
+                })
+        })
+        .transpose()
 }
