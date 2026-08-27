@@ -27,6 +27,7 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use http::{Method, StatusCode};
@@ -168,6 +169,10 @@ pub struct OAuth2TokenProvider {
 
     /// Most recently fetched token.
     cached_token: Mutex<Option<String>>,
+
+    /// Expiration time of the cached token, if known. If `None`, we don't know when it expires.
+    /// If the token is expired, we will fetch a new one.
+    cached_token_expiration: Mutex<Option<Instant>>,
 }
 
 impl Debug for OAuth2TokenProvider {
@@ -199,7 +204,6 @@ impl OAuth2TokenProvider {
         token_endpoint: String,
         extra_headers: HeaderMap,
         extra_oauth_params: HashMap<String, String>,
-        cached_token: Option<String>,
     ) -> Self {
         Self {
             client,
@@ -208,12 +212,13 @@ impl OAuth2TokenProvider {
             token_endpoint,
             extra_headers,
             extra_oauth_params,
-            cached_token: Mutex::new(cached_token),
+            cached_token: Mutex::new(None),
+            cached_token_expiration: Mutex::new(None),
         }
     }
 
     /// Just fetch a token. Don't store it or do anything else.
-    async fn exchange_credential_for_token(&self) -> Result<String> {
+    async fn exchange_credential_for_token(&self) -> Result<(String, Option<u64>)> {
         let mut params = HashMap::with_capacity(4);
         params.insert("grant_type", "client_credentials");
         if let Some(client_id) = &self.client_id {
@@ -273,34 +278,73 @@ impl OAuth2TokenProvider {
             })?;
             Err(Error::from(e))
         }?;
-        Ok(auth_res.access_token)
+        Ok((auth_res.access_token, auth_res.expires_in))
     }
 }
+
+/// How far ahead of expiry a cached token is replaced.
+///
+/// A token handed out at the very edge of its lifetime can expire while the request carrying it
+/// is still in flight, so it is retired early instead.
+const REFRESH_MARGIN: Duration = Duration::from_secs(600);
 
 #[async_trait]
 impl TokenProvider for OAuth2TokenProvider {
     /// Fetch a new token if we don't already have one cached.
     async fn token(&self) -> Result<String> {
         let mut cached = self.cached_token.lock().await;
+        let mut cached_expiration = self.cached_token_expiration.lock().await;
 
-        if let Some(token) = cached.clone() {
+        if let Some(token) = cached.clone()
+            && cached_expiration.is_none_or(|exp| Instant::now() + REFRESH_MARGIN < exp)
+        {
             return Ok(token);
         }
 
-        let token = self.exchange_credential_for_token().await?;
+        let (token, expires_in) = self.exchange_credential_for_token().await?;
+        // Resolve the expiry before touching the cache, so a failure here leaves the previous
+        // token and its expiry paired rather than storing a new token against a stale expiry.
+        let expiration = expiration_instant(expires_in)?;
         *cached = Some(token.clone());
+        *cached_expiration = expiration;
         Ok(token)
     }
 
     async fn invalidate(&self) -> Result<()> {
         *self.cached_token.lock().await = None;
+        *self.cached_token_expiration.lock().await = None;
         Ok(())
     }
 
     /// Try fetching and caching a new token. If that fails, keep the old token.
     async fn regenerate(&self) -> Result<()> {
         let mut cached = self.cached_token.lock().await;
-        *cached = Some(self.exchange_credential_for_token().await?);
+        let mut cached_expiration = self.cached_token_expiration.lock().await;
+        let (token, expires_in) = self.exchange_credential_for_token().await?;
+        let expiration = expiration_instant(expires_in)?;
+        *cached = Some(token);
+        *cached_expiration = expiration;
         Ok(())
     }
+}
+
+/// Converts an OAuth2 `expires_in` lifetime into the instant the token goes stale.
+///
+/// `None` means the server reported no lifetime, which callers read as "never expires".
+/// A lifetime so large that it overflows the monotonic clock is an error rather than `None`,
+/// since silently treating it as non-expiring would keep a dead token forever.
+fn expiration_instant(expires_in: Option<u64>) -> Result<Option<Instant>> {
+    expires_in
+        .map(|secs| {
+            Instant::now()
+                .checked_add(Duration::from_secs(secs))
+                .ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::Unexpected,
+                        "OAuth2 token lifetime overflows the monotonic clock",
+                    )
+                    .with_context("expires_in", secs.to_string())
+                })
+        })
+        .transpose()
 }

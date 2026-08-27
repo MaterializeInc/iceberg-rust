@@ -701,6 +701,7 @@ impl iceberg::io::FileIOBuilder
 pub fn iceberg::io::FileIOBuilder::build(self) -> iceberg::io::FileIO
 pub fn iceberg::io::FileIOBuilder::config(&self) -> &iceberg::io::StorageConfig
 pub fn iceberg::io::FileIOBuilder::new(factory: alloc::sync::Arc<dyn iceberg::io::StorageFactory>) -> Self
+pub fn iceberg::io::FileIOBuilder::with_prefixed_props(self, prefix: impl core::convert::Into<alloc::string::String>, props: impl core::iter::traits::collect::IntoIterator<Item = (impl alloc::string::ToString, impl alloc::string::ToString)>) -> Self
 pub fn iceberg::io::FileIOBuilder::with_prop(self, key: impl alloc::string::ToString, value: impl alloc::string::ToString) -> Self
 pub fn iceberg::io::FileIOBuilder::with_props(self, args: impl core::iter::traits::collect::IntoIterator<Item = (impl alloc::string::ToString, impl alloc::string::ToString)>) -> Self
 impl core::clone::Clone for iceberg::io::FileIOBuilder
@@ -3082,6 +3083,7 @@ pub fn iceberg::transaction::Transaction::expire_snapshots(&self) -> iceberg::tr
 pub fn iceberg::transaction::Transaction::fast_append(&self) -> iceberg::transaction::append::FastAppendAction
 pub fn iceberg::transaction::Transaction::new(table: &iceberg::table::Table) -> Self
 pub fn iceberg::transaction::Transaction::replace_sort_order(&self) -> iceberg::transaction::sort_order::ReplaceSortOrderAction
+pub fn iceberg::transaction::Transaction::row_delta(&self) -> iceberg::transaction::row_delta::RowDeltaAction
 pub fn iceberg::transaction::Transaction::update_location(&self) -> iceberg::transaction::update_location::UpdateLocationAction
 pub fn iceberg::transaction::Transaction::update_schema(&self) -> iceberg::transaction::update_schema::UpdateSchemaAction
 pub fn iceberg::transaction::Transaction::update_statistics(&self) -> iceberg::transaction::update_statistics::UpdateStatisticsAction
@@ -3111,6 +3113,7 @@ pub struct iceberg::writer::base_writer::data_file_writer::DataFileWriter<B: ice
 impl<B, L, F> iceberg::writer::CurrentFileStatus for iceberg::writer::base_writer::data_file_writer::DataFileWriter<B, L, F> where B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator
 pub fn iceberg::writer::base_writer::data_file_writer::DataFileWriter<B, L, F>::current_file_path(&self) -> alloc::string::String
 pub fn iceberg::writer::base_writer::data_file_writer::DataFileWriter<B, L, F>::current_row_num(&self) -> usize
+pub fn iceberg::writer::base_writer::data_file_writer::DataFileWriter<B, L, F>::current_schema(&self) -> iceberg::spec::SchemaRef
 pub fn iceberg::writer::base_writer::data_file_writer::DataFileWriter<B, L, F>::current_written_size(&self) -> usize
 impl<B, L, F> iceberg::writer::IcebergWriter for iceberg::writer::base_writer::data_file_writer::DataFileWriter<B, L, F> where B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator
 pub fn iceberg::writer::base_writer::data_file_writer::DataFileWriter<B, L, F>::close<'life0, 'async_trait>(&'life0 mut self) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<alloc::vec::Vec<iceberg::spec::DataFile>>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
@@ -3144,8 +3147,57 @@ pub struct iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteW
 impl iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteWriterConfig
 pub fn iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteWriterConfig::new(equality_ids: alloc::vec::Vec<i32>, original_schema: iceberg::spec::SchemaRef) -> iceberg::Result<Self>
 pub fn iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteWriterConfig::projected_arrow_schema_ref(&self) -> &arrow_schema::schema::SchemaRef
+impl core::clone::Clone for iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteWriterConfig
+pub fn iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteWriterConfig::clone(&self) -> iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteWriterConfig
 impl core::fmt::Debug for iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteWriterConfig
 pub fn iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteWriterConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub mod iceberg::writer::base_writer::position_delete_writer
+pub struct iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriter<B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator>
+impl<B, L, F> iceberg::writer::IcebergWriter for iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriter<B, L, F> where B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator
+pub fn iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriter<B, L, F>::close<'life0, 'async_trait>(&'life0 mut self) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<alloc::vec::Vec<iceberg::spec::DataFile>>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
+pub fn iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriter<B, L, F>::write<'life0, 'async_trait>(&'life0 mut self, batch: arrow_array::record_batch::RecordBatch) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<()>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
+impl<B: core::fmt::Debug + iceberg::writer::file_writer::FileWriterBuilder, L: core::fmt::Debug + iceberg::writer::file_writer::location_generator::LocationGenerator, F: core::fmt::Debug + iceberg::writer::file_writer::location_generator::FileNameGenerator> core::fmt::Debug for iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriter<B, L, F>
+pub fn iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriter<B, L, F>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriterBuilder<B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator>
+impl<B, L, F> iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriterBuilder<B, L, F> where B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator
+pub fn iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriterBuilder<B, L, F>::new(inner: iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder<B, L, F>, config: iceberg::writer::base_writer::position_delete_writer::PositionDeleteWriterConfig) -> Self
+impl<B, L, F> iceberg::writer::IcebergWriterBuilder for iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriterBuilder<B, L, F> where B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator
+pub type iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriterBuilder<B, L, F>::R = iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriter<B, L, F>
+pub fn iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriterBuilder<B, L, F>::build<'life0, 'async_trait>(&'life0 self, partition_key: core::option::Option<iceberg::spec::PartitionKey>) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<Self::R>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
+impl<B: core::fmt::Debug + iceberg::writer::file_writer::FileWriterBuilder, L: core::fmt::Debug + iceberg::writer::file_writer::location_generator::LocationGenerator, F: core::fmt::Debug + iceberg::writer::file_writer::location_generator::FileNameGenerator> core::fmt::Debug for iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriterBuilder<B, L, F>
+pub fn iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriterBuilder<B, L, F>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct iceberg::writer::base_writer::position_delete_writer::PositionDeleteWriterConfig
+impl iceberg::writer::base_writer::position_delete_writer::PositionDeleteWriterConfig
+pub fn iceberg::writer::base_writer::position_delete_writer::PositionDeleteWriterConfig::arrow_schema() -> arrow_schema::schema::SchemaRef
+pub fn iceberg::writer::base_writer::position_delete_writer::PositionDeleteWriterConfig::new(partition_value: core::option::Option<iceberg::spec::Struct>, partition_spec_id: i32, referenced_data_file: core::option::Option<alloc::string::String>) -> Self
+impl core::clone::Clone for iceberg::writer::base_writer::position_delete_writer::PositionDeleteWriterConfig
+pub fn iceberg::writer::base_writer::position_delete_writer::PositionDeleteWriterConfig::clone(&self) -> iceberg::writer::base_writer::position_delete_writer::PositionDeleteWriterConfig
+impl core::fmt::Debug for iceberg::writer::base_writer::position_delete_writer::PositionDeleteWriterConfig
+pub fn iceberg::writer::base_writer::position_delete_writer::PositionDeleteWriterConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub mod iceberg::writer::combined_writer
+pub mod iceberg::writer::combined_writer::delta_writer
+pub struct iceberg::writer::combined_writer::delta_writer::DeltaWriter<DW, PDW, EDW>
+pub iceberg::writer::combined_writer::delta_writer::DeltaWriter::data_writer: DW
+pub iceberg::writer::combined_writer::delta_writer::DeltaWriter::eq_delete_writer: EDW
+pub iceberg::writer::combined_writer::delta_writer::DeltaWriter::pos_delete_writer: PDW
+pub iceberg::writer::combined_writer::delta_writer::DeltaWriter::seen_rows: std::collections::hash::map::HashMap<arrow_row::OwnedRow, iceberg::writer::combined_writer::delta_writer::Position>
+pub iceberg::writer::combined_writer::delta_writer::DeltaWriter::unique_cols: alloc::vec::Vec<i32>
+impl<DW, PDW, EDW> iceberg::writer::IcebergWriter for iceberg::writer::combined_writer::delta_writer::DeltaWriter<DW, PDW, EDW> where DW: iceberg::writer::IcebergWriter + iceberg::writer::CurrentFileStatus, PDW: iceberg::writer::IcebergWriter, EDW: iceberg::writer::IcebergWriter
+pub fn iceberg::writer::combined_writer::delta_writer::DeltaWriter<DW, PDW, EDW>::close<'life0, 'async_trait>(&'life0 mut self) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<alloc::vec::Vec<iceberg::spec::DataFile>>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
+pub fn iceberg::writer::combined_writer::delta_writer::DeltaWriter<DW, PDW, EDW>::write<'life0, 'async_trait>(&'life0 mut self, batch: arrow_array::record_batch::RecordBatch) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<()>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
+pub struct iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB>
+impl<DWB, PDWB, EDWB> iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB>
+pub fn iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB>::new(data_writer_builder: DWB, pos_delete_writer_builder: PDWB, eq_delete_writer_builder: EDWB, unique_cols: alloc::vec::Vec<i32>) -> Self
+pub fn iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB>::with_max_seen_rows(self, max_seen_rows: usize) -> Self
+impl<DWB, PDWB, EDWB> iceberg::writer::IcebergWriterBuilder for iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB> where DWB: iceberg::writer::IcebergWriterBuilder, PDWB: iceberg::writer::IcebergWriterBuilder, EDWB: iceberg::writer::IcebergWriterBuilder, <DWB as iceberg::writer::IcebergWriterBuilder>::R: iceberg::writer::CurrentFileStatus
+pub type iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB>::R = iceberg::writer::combined_writer::delta_writer::DeltaWriter<<DWB as iceberg::writer::IcebergWriterBuilder>::R, <PDWB as iceberg::writer::IcebergWriterBuilder>::R, <EDWB as iceberg::writer::IcebergWriterBuilder>::R>
+pub fn iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB>::build<'life0, 'async_trait>(&'life0 self, partition_key: core::option::Option<iceberg::spec::PartitionKey>) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<Self::R>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
+impl<DWB: core::clone::Clone, PDWB: core::clone::Clone, EDWB: core::clone::Clone> core::clone::Clone for iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB>
+pub fn iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB>::clone(&self) -> iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB>
+impl<DWB: core::fmt::Debug, PDWB: core::fmt::Debug, EDWB: core::fmt::Debug> core::fmt::Debug for iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB>
+pub fn iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct iceberg::writer::combined_writer::delta_writer::Position
+pub const iceberg::writer::combined_writer::delta_writer::DEFAULT_MAX_SEEN_ROWS: usize
 pub mod iceberg::writer::file_writer
 pub mod iceberg::writer::file_writer::location_generator
 pub struct iceberg::writer::file_writer::location_generator::DefaultFileNameGenerator
@@ -3185,12 +3237,13 @@ pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriter<B, L, F>:
 impl<B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator> iceberg::writer::CurrentFileStatus for iceberg::writer::file_writer::rolling_writer::RollingFileWriter<B, L, F>
 pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriter<B, L, F>::current_file_path(&self) -> alloc::string::String
 pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriter<B, L, F>::current_row_num(&self) -> usize
+pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriter<B, L, F>::current_schema(&self) -> iceberg::spec::SchemaRef
 pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriter<B, L, F>::current_written_size(&self) -> usize
 pub struct iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder<B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator>
 impl<B, L, F> iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder<B, L, F> where B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator
 pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder<B, L, F>::build(&self) -> iceberg::writer::file_writer::rolling_writer::RollingFileWriter<B, L, F>
-pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder<B, L, F>::new(inner_builder: B, target_file_size: usize, file_io: iceberg::io::FileIO, location_generator: L, file_name_generator: F) -> Self
-pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder<B, L, F>::new_with_default_file_size(inner_builder: B, file_io: iceberg::io::FileIO, location_generator: L, file_name_generator: F) -> Self
+pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder<B, L, F>::new(inner_builder: B, schema: iceberg::spec::SchemaRef, target_file_size: usize, file_io: iceberg::io::FileIO, location_generator: L, file_name_generator: F) -> Self
+pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder<B, L, F>::new_with_default_file_size(inner_builder: B, schema: iceberg::spec::SchemaRef, file_io: iceberg::io::FileIO, location_generator: L, file_name_generator: F) -> Self
 impl<B: core::clone::Clone + iceberg::writer::file_writer::FileWriterBuilder, L: core::clone::Clone + iceberg::writer::file_writer::location_generator::LocationGenerator, F: core::clone::Clone + iceberg::writer::file_writer::location_generator::FileNameGenerator> core::clone::Clone for iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder<B, L, F>
 pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder<B, L, F>::clone(&self) -> iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder<B, L, F>
 impl<B: core::fmt::Debug + iceberg::writer::file_writer::FileWriterBuilder, L: core::fmt::Debug + iceberg::writer::file_writer::location_generator::LocationGenerator, F: core::fmt::Debug + iceberg::writer::file_writer::location_generator::FileNameGenerator> core::fmt::Debug for iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder<B, L, F>
@@ -3199,6 +3252,7 @@ pub struct iceberg::writer::file_writer::ParquetWriter
 impl iceberg::writer::CurrentFileStatus for iceberg::writer::file_writer::ParquetWriter
 pub fn iceberg::writer::file_writer::ParquetWriter::current_file_path(&self) -> alloc::string::String
 pub fn iceberg::writer::file_writer::ParquetWriter::current_row_num(&self) -> usize
+pub fn iceberg::writer::file_writer::ParquetWriter::current_schema(&self) -> iceberg::spec::SchemaRef
 pub fn iceberg::writer::file_writer::ParquetWriter::current_written_size(&self) -> usize
 impl iceberg::writer::file_writer::FileWriter for iceberg::writer::file_writer::ParquetWriter
 pub async fn iceberg::writer::file_writer::ParquetWriter::close(self) -> iceberg::Result<alloc::vec::Vec<iceberg::spec::DataFileBuilder>>
@@ -3208,6 +3262,7 @@ impl iceberg::writer::file_writer::ParquetWriterBuilder
 pub fn iceberg::writer::file_writer::ParquetWriterBuilder::from_table_properties(table_props: &iceberg::spec::TableProperties, schema: iceberg::spec::SchemaRef) -> Self
 pub fn iceberg::writer::file_writer::ParquetWriterBuilder::new(props: parquet::file::properties::WriterProperties, schema: iceberg::spec::SchemaRef) -> Self
 pub fn iceberg::writer::file_writer::ParquetWriterBuilder::new_with_match_mode(props: parquet::file::properties::WriterProperties, schema: iceberg::spec::SchemaRef, match_mode: iceberg::arrow::FieldMatchMode) -> Self
+pub fn iceberg::writer::file_writer::ParquetWriterBuilder::with_arrow_schema(self, arrow_schema: alloc::sync::Arc<arrow_schema::schema::Schema>) -> iceberg::Result<Self>
 pub fn iceberg::writer::file_writer::ParquetWriterBuilder::with_match_mode(self, match_mode: iceberg::arrow::FieldMatchMode) -> Self
 impl core::clone::Clone for iceberg::writer::file_writer::ParquetWriterBuilder
 pub fn iceberg::writer::file_writer::ParquetWriterBuilder::clone(&self) -> iceberg::writer::file_writer::ParquetWriterBuilder
@@ -3261,18 +3316,22 @@ pub fn iceberg::writer::partitioning::fanout_writer::FanoutWriter<B, I, O>::writ
 pub trait iceberg::writer::CurrentFileStatus
 pub fn iceberg::writer::CurrentFileStatus::current_file_path(&self) -> alloc::string::String
 pub fn iceberg::writer::CurrentFileStatus::current_row_num(&self) -> usize
+pub fn iceberg::writer::CurrentFileStatus::current_schema(&self) -> iceberg::spec::SchemaRef
 pub fn iceberg::writer::CurrentFileStatus::current_written_size(&self) -> usize
 impl iceberg::writer::CurrentFileStatus for iceberg::writer::file_writer::ParquetWriter
 pub fn iceberg::writer::file_writer::ParquetWriter::current_file_path(&self) -> alloc::string::String
 pub fn iceberg::writer::file_writer::ParquetWriter::current_row_num(&self) -> usize
+pub fn iceberg::writer::file_writer::ParquetWriter::current_schema(&self) -> iceberg::spec::SchemaRef
 pub fn iceberg::writer::file_writer::ParquetWriter::current_written_size(&self) -> usize
 impl<B, L, F> iceberg::writer::CurrentFileStatus for iceberg::writer::base_writer::data_file_writer::DataFileWriter<B, L, F> where B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator
 pub fn iceberg::writer::base_writer::data_file_writer::DataFileWriter<B, L, F>::current_file_path(&self) -> alloc::string::String
 pub fn iceberg::writer::base_writer::data_file_writer::DataFileWriter<B, L, F>::current_row_num(&self) -> usize
+pub fn iceberg::writer::base_writer::data_file_writer::DataFileWriter<B, L, F>::current_schema(&self) -> iceberg::spec::SchemaRef
 pub fn iceberg::writer::base_writer::data_file_writer::DataFileWriter<B, L, F>::current_written_size(&self) -> usize
 impl<B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator> iceberg::writer::CurrentFileStatus for iceberg::writer::file_writer::rolling_writer::RollingFileWriter<B, L, F>
 pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriter<B, L, F>::current_file_path(&self) -> alloc::string::String
 pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriter<B, L, F>::current_row_num(&self) -> usize
+pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriter<B, L, F>::current_schema(&self) -> iceberg::spec::SchemaRef
 pub fn iceberg::writer::file_writer::rolling_writer::RollingFileWriter<B, L, F>::current_written_size(&self) -> usize
 pub trait iceberg::writer::IcebergWriter<I, O>: core::marker::Send + 'static
 pub fn iceberg::writer::IcebergWriter::close<'life0, 'async_trait>(&'life0 mut self) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<O>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
@@ -3283,6 +3342,12 @@ pub fn iceberg::writer::base_writer::data_file_writer::DataFileWriter<B, L, F>::
 impl<B, L, F> iceberg::writer::IcebergWriter for iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteFileWriter<B, L, F> where B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator
 pub fn iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteFileWriter<B, L, F>::close<'life0, 'async_trait>(&'life0 mut self) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<alloc::vec::Vec<iceberg::spec::DataFile>>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
 pub fn iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteFileWriter<B, L, F>::write<'life0, 'async_trait>(&'life0 mut self, batch: arrow_array::record_batch::RecordBatch) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<()>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
+impl<B, L, F> iceberg::writer::IcebergWriter for iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriter<B, L, F> where B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator
+pub fn iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriter<B, L, F>::close<'life0, 'async_trait>(&'life0 mut self) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<alloc::vec::Vec<iceberg::spec::DataFile>>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
+pub fn iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriter<B, L, F>::write<'life0, 'async_trait>(&'life0 mut self, batch: arrow_array::record_batch::RecordBatch) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<()>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
+impl<DW, PDW, EDW> iceberg::writer::IcebergWriter for iceberg::writer::combined_writer::delta_writer::DeltaWriter<DW, PDW, EDW> where DW: iceberg::writer::IcebergWriter + iceberg::writer::CurrentFileStatus, PDW: iceberg::writer::IcebergWriter, EDW: iceberg::writer::IcebergWriter
+pub fn iceberg::writer::combined_writer::delta_writer::DeltaWriter<DW, PDW, EDW>::close<'life0, 'async_trait>(&'life0 mut self) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<alloc::vec::Vec<iceberg::spec::DataFile>>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
+pub fn iceberg::writer::combined_writer::delta_writer::DeltaWriter<DW, PDW, EDW>::write<'life0, 'async_trait>(&'life0 mut self, batch: arrow_array::record_batch::RecordBatch) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<()>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
 pub trait iceberg::writer::IcebergWriterBuilder<I, O>: core::marker::Send + core::marker::Sync + 'static
 pub type iceberg::writer::IcebergWriterBuilder::R: iceberg::writer::IcebergWriter<I, O>
 pub fn iceberg::writer::IcebergWriterBuilder::build<'life0, 'async_trait>(&'life0 self, partition_key: core::option::Option<iceberg::spec::PartitionKey>) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<Self::R>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
@@ -3292,6 +3357,12 @@ pub fn iceberg::writer::base_writer::data_file_writer::DataFileWriterBuilder<B, 
 impl<B, L, F> iceberg::writer::IcebergWriterBuilder for iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteFileWriterBuilder<B, L, F> where B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator
 pub type iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteFileWriterBuilder<B, L, F>::R = iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteFileWriter<B, L, F>
 pub fn iceberg::writer::base_writer::equality_delete_writer::EqualityDeleteFileWriterBuilder<B, L, F>::build<'life0, 'async_trait>(&'life0 self, partition_key: core::option::Option<iceberg::spec::PartitionKey>) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<Self::R>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
+impl<B, L, F> iceberg::writer::IcebergWriterBuilder for iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriterBuilder<B, L, F> where B: iceberg::writer::file_writer::FileWriterBuilder, L: iceberg::writer::file_writer::location_generator::LocationGenerator, F: iceberg::writer::file_writer::location_generator::FileNameGenerator
+pub type iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriterBuilder<B, L, F>::R = iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriter<B, L, F>
+pub fn iceberg::writer::base_writer::position_delete_writer::PositionDeleteFileWriterBuilder<B, L, F>::build<'life0, 'async_trait>(&'life0 self, partition_key: core::option::Option<iceberg::spec::PartitionKey>) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<Self::R>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
+impl<DWB, PDWB, EDWB> iceberg::writer::IcebergWriterBuilder for iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB> where DWB: iceberg::writer::IcebergWriterBuilder, PDWB: iceberg::writer::IcebergWriterBuilder, EDWB: iceberg::writer::IcebergWriterBuilder, <DWB as iceberg::writer::IcebergWriterBuilder>::R: iceberg::writer::CurrentFileStatus
+pub type iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB>::R = iceberg::writer::combined_writer::delta_writer::DeltaWriter<<DWB as iceberg::writer::IcebergWriterBuilder>::R, <PDWB as iceberg::writer::IcebergWriterBuilder>::R, <EDWB as iceberg::writer::IcebergWriterBuilder>::R>
+pub fn iceberg::writer::combined_writer::delta_writer::DeltaWriterBuilder<DWB, PDWB, EDWB>::build<'life0, 'async_trait>(&'life0 self, partition_key: core::option::Option<iceberg::spec::PartitionKey>) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = iceberg::Result<Self::R>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
 pub macro iceberg::ensure_data_valid!
 #[non_exhaustive] pub enum iceberg::ErrorKind
 pub iceberg::ErrorKind::CatalogCommitConflicts
