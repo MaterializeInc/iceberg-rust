@@ -61,8 +61,15 @@ pub struct RowDeltaAction {
     added_delete_files: Vec<DataFile>,
 }
 
+impl Default for RowDeltaAction {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RowDeltaAction {
-    pub(crate) fn new() -> Self {
+    /// Create a new row delta action. Equivalent to [`crate::transaction::Transaction::row_delta`].
+    pub fn new() -> Self {
         Self {
             check_duplicate: true,
             commit_uuid: None,
