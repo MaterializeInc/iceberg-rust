@@ -29,9 +29,7 @@ use opendal::services::S3Config;
 use opendal::{Configurator, Operator};
 /// AWS credentials: access key ID, secret access key, and optional session token.
 pub use reqsign_aws_v4::Credential as AwsCredential;
-/// Trait for types that can asynchronously supply [`AwsCredential`] to a [`CustomAwsCredentialLoader`].
-pub use reqsign_core::ProvideCredential;
-use reqsign_core::{ProvideCredentialChain, ProvideCredentialDyn};
+use reqsign_core::{ProvideCredential, ProvideCredentialChain, ProvideCredentialDyn};
 use url::Url;
 
 use crate::utils::{from_opendal_error, is_truthy};

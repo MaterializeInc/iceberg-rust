@@ -34,6 +34,8 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::OpenDalStorage;
+#[cfg(feature = "opendal-gcs")]
+use crate::gcs::CustomGcsCredentialLoader;
 #[cfg(feature = "opendal-s3")]
 use crate::s3::CustomAwsCredentialLoader;
 
@@ -84,7 +86,8 @@ fn extract_scheme(path: &str) -> Result<&'static str> {
 fn build_storage_for_scheme(
     scheme: &'static str,
     props: &HashMap<String, String>,
-    #[cfg(feature = "opendal-s3")] customized_credential_load: &Option<CustomAwsCredentialLoader>,
+    #[cfg(feature = "opendal-s3")] s3_credential_load: &Option<CustomAwsCredentialLoader>,
+    #[cfg(feature = "opendal-gcs")] gcs_credential_load: &Option<CustomGcsCredentialLoader>,
 ) -> Result<OpenDalStorage> {
     match scheme {
         #[cfg(feature = "opendal-s3")]
@@ -92,7 +95,7 @@ fn build_storage_for_scheme(
             let config = crate::s3::s3_config_parse(props.clone())?;
             Ok(OpenDalStorage::S3 {
                 config: Arc::new(config),
-                customized_credential_load: customized_credential_load.clone(),
+                customized_credential_load: s3_credential_load.clone(),
             })
         }
         #[cfg(feature = "opendal-gcs")]
@@ -100,6 +103,7 @@ fn build_storage_for_scheme(
             let config = crate::gcs::gcs_config_parse(props.clone())?;
             Ok(OpenDalStorage::Gcs {
                 config: Arc::new(config),
+                customized_credential_load: gcs_credential_load.clone(),
             })
         }
         #[cfg(feature = "opendal-oss")]
@@ -157,7 +161,11 @@ pub struct OpenDalResolvingStorageFactory {
     /// Custom AWS credential loader for S3 storage.
     #[cfg(feature = "opendal-s3")]
     #[serde(skip)]
-    customized_credential_load: Option<CustomAwsCredentialLoader>,
+    s3_credential_load: Option<CustomAwsCredentialLoader>,
+    /// Custom GCS credential loader for GCS storage.
+    #[cfg(feature = "opendal-gcs")]
+    #[serde(skip)]
+    gcs_credential_load: Option<CustomGcsCredentialLoader>,
 }
 
 impl Default for OpenDalResolvingStorageFactory {
@@ -171,14 +179,23 @@ impl OpenDalResolvingStorageFactory {
     pub fn new() -> Self {
         Self {
             #[cfg(feature = "opendal-s3")]
-            customized_credential_load: None,
+            s3_credential_load: None,
+            #[cfg(feature = "opendal-gcs")]
+            gcs_credential_load: None,
         }
     }
 
     /// Set a custom AWS credential loader for S3 storage.
     #[cfg(feature = "opendal-s3")]
     pub fn with_s3_credential_loader(mut self, loader: CustomAwsCredentialLoader) -> Self {
-        self.customized_credential_load = Some(loader);
+        self.s3_credential_load = Some(loader);
+        self
+    }
+
+    /// Set a custom GCS credential loader for GCS storage.
+    #[cfg(feature = "opendal-gcs")]
+    pub fn with_gcs_credential_loader(mut self, loader: CustomGcsCredentialLoader) -> Self {
+        self.gcs_credential_load = Some(loader);
         self
     }
 }
@@ -190,7 +207,9 @@ impl StorageFactory for OpenDalResolvingStorageFactory {
             props: config.props().clone(),
             storages: RwLock::new(HashMap::new()),
             #[cfg(feature = "opendal-s3")]
-            customized_credential_load: self.customized_credential_load.clone(),
+            s3_credential_load: self.s3_credential_load.clone(),
+            #[cfg(feature = "opendal-gcs")]
+            gcs_credential_load: self.gcs_credential_load.clone(),
         }))
     }
 }
@@ -211,7 +230,11 @@ pub struct OpenDalResolvingStorage {
     /// Custom AWS credential loader for S3 storage.
     #[cfg(feature = "opendal-s3")]
     #[serde(skip)]
-    customized_credential_load: Option<CustomAwsCredentialLoader>,
+    s3_credential_load: Option<CustomAwsCredentialLoader>,
+    /// Custom GCS credential loader for GCS storage.
+    #[cfg(feature = "opendal-gcs")]
+    #[serde(skip)]
+    gcs_credential_load: Option<CustomGcsCredentialLoader>,
 }
 
 impl OpenDalResolvingStorage {
@@ -246,7 +269,9 @@ impl OpenDalResolvingStorage {
             scheme,
             &self.props,
             #[cfg(feature = "opendal-s3")]
-            &self.customized_credential_load,
+            &self.s3_credential_load,
+            #[cfg(feature = "opendal-gcs")]
+            &self.gcs_credential_load,
         )?;
         let storage = Arc::new(storage);
         cache.insert(scheme, storage.clone());
@@ -333,7 +358,9 @@ mod tests {
             props: HashMap::new(),
             storages: RwLock::new(HashMap::new()),
             #[cfg(feature = "opendal-s3")]
-            customized_credential_load: None,
+            s3_credential_load: None,
+            #[cfg(feature = "opendal-gcs")]
+            gcs_credential_load: None,
         }
     }
 

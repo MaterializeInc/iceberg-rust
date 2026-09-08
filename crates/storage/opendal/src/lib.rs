@@ -69,7 +69,7 @@ cfg_if! {
 cfg_if! {
     if #[cfg(feature = "opendal-gcs")] {
         mod gcs;
-        use gcs::*;
+        pub use gcs::*;
         use opendal::services::GcsConfig;
     }
 }
@@ -97,6 +97,14 @@ cfg_if! {
     }
 }
 
+/// Trait for types that can asynchronously supply credentials to a custom credential
+/// loader, such as [`CustomAwsCredentialLoader`] or [`CustomGcsCredentialLoader`].
+///
+/// Downstream implementors must name the trait through this re-export: a loader built
+/// against a differently-versioned `reqsign-core` will not satisfy the bound.
+#[cfg(any(feature = "opendal-s3", feature = "opendal-gcs"))]
+pub use reqsign_core::ProvideCredential;
+
 mod resolving;
 pub use resolving::{OpenDalResolvingStorage, OpenDalResolvingStorageFactory};
 
@@ -121,7 +129,11 @@ pub enum OpenDalStorageFactory {
     },
     /// GCS storage factory.
     #[cfg(feature = "opendal-gcs")]
-    Gcs,
+    Gcs {
+        /// Custom GCS credential loader.
+        #[serde(skip)]
+        customized_credential_load: Option<gcs::CustomGcsCredentialLoader>,
+    },
     /// OSS storage factory.
     #[cfg(feature = "opendal-oss")]
     Oss,
@@ -152,8 +164,11 @@ impl StorageFactory for OpenDalStorageFactory {
                 customized_credential_load: customized_credential_load.clone(),
             })),
             #[cfg(feature = "opendal-gcs")]
-            OpenDalStorageFactory::Gcs => Ok(Arc::new(OpenDalStorage::Gcs {
+            OpenDalStorageFactory::Gcs {
+                customized_credential_load,
+            } => Ok(Arc::new(OpenDalStorage::Gcs {
                 config: gcs_config_parse(config.props().clone())?.into(),
+                customized_credential_load: customized_credential_load.clone(),
             })),
             #[cfg(feature = "opendal-oss")]
             OpenDalStorageFactory::Oss => Ok(Arc::new(OpenDalStorage::Oss {
@@ -216,6 +231,9 @@ pub enum OpenDalStorage {
     Gcs {
         /// GCS configuration.
         config: Arc<GcsConfig>,
+        /// Custom GCS credential loader.
+        #[serde(skip)]
+        customized_credential_load: Option<gcs::CustomGcsCredentialLoader>,
     },
     /// OSS storage variant.
     #[cfg(feature = "opendal-oss")]
@@ -310,8 +328,11 @@ impl OpenDalStorage {
                 }
             }
             #[cfg(feature = "opendal-gcs")]
-            OpenDalStorage::Gcs { config } => {
-                let operator = gcs_config_build(config, path)?;
+            OpenDalStorage::Gcs {
+                config,
+                customized_credential_load,
+            } => {
+                let operator = gcs_config_build(config, customized_credential_load, path)?;
                 let prefix = format!("gs://{}/", operator.info().name());
                 if path.starts_with(&prefix) {
                     (operator, &path[prefix.len()..])
@@ -697,6 +718,7 @@ mod tests {
     fn test_relativize_path_gcs() {
         let storage = OpenDalStorage::Gcs {
             config: Arc::new(GcsConfig::default()),
+            customized_credential_load: None,
         };
 
         assert_eq!(
@@ -712,6 +734,7 @@ mod tests {
     fn test_relativize_path_gcs_invalid_scheme() {
         let storage = OpenDalStorage::Gcs {
             config: Arc::new(GcsConfig::default()),
+            customized_credential_load: None,
         };
 
         assert!(
