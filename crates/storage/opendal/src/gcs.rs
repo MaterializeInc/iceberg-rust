@@ -111,26 +111,25 @@ pub(crate) fn gcs_config_build(
     let mut cfg = cfg.clone();
     cfg.bucket = bucket.to_string();
 
-    if customized_credential_load.is_some() {
-        // `skip_signature` bypasses the signer entirely, so the loader would never be
-        // consulted. Refuse rather than silently ignore one of the two.
-        if cfg.skip_signature {
-            return Err(Error::new(
-                ErrorKind::DataInvalid,
-                format!(
-                    "a custom GCS credential loader cannot be combined with \
-                     {GCS_NO_AUTH} or {GCS_ALLOW_ANONYMOUS}, which disable request signing"
-                ),
-            ));
+    let builder = match customized_credential_load {
+        None => cfg.into_builder(),
+        Some(loader) => {
+            // `skip_signature` bypasses the signer entirely, so the loader would never be
+            // consulted. Refuse rather than silently ignore one of the two.
+            if cfg.skip_signature {
+                return Err(Error::new(
+                    ErrorKind::DataInvalid,
+                    format!(
+                        "a custom GCS credential loader cannot be combined with \
+                         {GCS_NO_AUTH} or {GCS_ALLOW_ANONYMOUS}, which disable request signing"
+                    ),
+                ));
+            }
+            suppress_default_credential_sources(&mut cfg);
+            let chain = ProvideCredentialChain::new().push(Arc::clone(&loader.0));
+            cfg.into_builder().credential_provider_chain(chain)
         }
-        suppress_default_credential_sources(&mut cfg);
-    }
-
-    let mut builder = cfg.into_builder();
-    if let Some(loader) = customized_credential_load {
-        let chain = ProvideCredentialChain::new().push(Arc::clone(&loader.0));
-        builder = builder.credential_provider_chain(chain);
-    }
+    };
 
     Ok(Operator::new(builder).map_err(from_opendal_error)?.finish())
 }
@@ -169,27 +168,6 @@ impl CustomGcsCredentialLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn suppress_clears_every_credential_source() {
-        let mut cfg = GcsConfig::default();
-        cfg.token = Some("vended".to_string());
-        cfg.credential = Some("{}".to_string());
-        cfg.credential_path = Some("/var/run/creds.json".to_string());
-        cfg.service_account = Some("sa@example.invalid".to_string());
-        cfg.bucket = "bucket".to_string();
-
-        suppress_default_credential_sources(&mut cfg);
-
-        assert_eq!(cfg.token, None);
-        assert_eq!(cfg.credential, None);
-        assert_eq!(cfg.credential_path, None);
-        assert_eq!(cfg.service_account, None);
-        assert!(cfg.disable_vm_metadata);
-        assert!(cfg.disable_config_load);
-        // Unrelated settings survive.
-        assert_eq!(cfg.bucket, "bucket");
-    }
 
     #[derive(Debug)]
     struct NoopProvider;

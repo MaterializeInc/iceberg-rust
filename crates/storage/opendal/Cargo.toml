@@ -66,4 +66,4 @@ url = { workspace = true }
 async-trait = { workspace = true }
 iceberg_test_utils = { path = "../../test_utils", features = ["tests"] }
 reqwest = { workspace = true }
-tokio = { workspace = true, features = ["macros"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net"] }
