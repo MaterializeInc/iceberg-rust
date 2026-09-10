@@ -215,8 +215,7 @@ mod tests {
 
         let chain = ProvideCredentialChain::new().push(MockCredentialLoader(None));
         let operator = Operator::new(cfg.into_builder().credential_provider_chain(chain))
-            .expect("operator builds")
-            .finish();
+            .expect("operator builds");
 
         assert!(
             !operator.exists("any").await.expect("the request is signed"),

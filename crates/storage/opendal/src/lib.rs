@@ -264,6 +264,22 @@ pub enum OpenDalStorage {
     },
 }
 
+/// Installs OpenDAL's default HTTP transport, once per process.
+///
+/// As of OpenDAL 0.59 the transport is opt-in: without one, every request to an HTTP-backed
+/// service fails with `ConfigInvalid` rather than at construction time. OpenDAL's own
+/// pre-`main` constructor would install it, but only under `auto-register-services`, and its
+/// documentation warns that linkers may drop that constructor when OpenDAL is linked as a
+/// `staticlib`, which is how the Python bindings consume it. Installing here instead keeps the
+/// behavior identical across every consumer.
+///
+/// `install_default` is first-installed-wins, so an application that installs its own transport
+/// before touching a `FileIO` keeps it.
+fn install_http_transport() {
+    static INSTALL: std::sync::Once = std::sync::Once::new();
+    INSTALL.call_once(opendal::install_default);
+}
+
 impl OpenDalStorage {
     /// Creates operator from path.
     ///
@@ -282,6 +298,8 @@ impl OpenDalStorage {
         &self,
         path: &'a impl AsRef<str>,
     ) -> Result<(Operator, &'a str)> {
+        install_http_transport();
+
         let path = path.as_ref();
         let (operator, relative_path): (Operator, &str) = match self {
             #[cfg(feature = "opendal-memory")]
