@@ -4105,6 +4105,7 @@ dependencies = [
  "iceberg_test_utils",
  "opendal",
  "reqsign-aws-v4",
+ "reqsign-azure-storage",
  "reqsign-core",
  "reqsign-google",
  "reqwest 0.12.28",

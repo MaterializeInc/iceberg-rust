@@ -1,11 +1,36 @@
 pub mod iceberg_storage_opendal
 pub use iceberg_storage_opendal::AwsCredential
+pub use iceberg_storage_opendal::AzdlsCredential
 pub use iceberg_storage_opendal::GcsCredential
 pub use iceberg_storage_opendal::GcsToken
 pub use iceberg_storage_opendal::ProvideCredential
+pub enum iceberg_storage_opendal::AzureStorageScheme
+pub iceberg_storage_opendal::AzureStorageScheme::Abfs
+pub iceberg_storage_opendal::AzureStorageScheme::Abfss
+pub iceberg_storage_opendal::AzureStorageScheme::Wasb
+pub iceberg_storage_opendal::AzureStorageScheme::Wasbs
+impl iceberg_storage_opendal::AzureStorageScheme
+pub fn iceberg_storage_opendal::AzureStorageScheme::as_http_scheme(&self) -> &str
+impl core::clone::Clone for iceberg_storage_opendal::AzureStorageScheme
+pub fn iceberg_storage_opendal::AzureStorageScheme::clone(&self) -> iceberg_storage_opendal::AzureStorageScheme
+impl core::cmp::PartialEq for iceberg_storage_opendal::AzureStorageScheme
+pub fn iceberg_storage_opendal::AzureStorageScheme::eq(&self, other: &iceberg_storage_opendal::AzureStorageScheme) -> bool
+impl core::fmt::Debug for iceberg_storage_opendal::AzureStorageScheme
+pub fn iceberg_storage_opendal::AzureStorageScheme::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for iceberg_storage_opendal::AzureStorageScheme
+pub fn iceberg_storage_opendal::AzureStorageScheme::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for iceberg_storage_opendal::AzureStorageScheme
+impl core::str::traits::FromStr for iceberg_storage_opendal::AzureStorageScheme
+pub type iceberg_storage_opendal::AzureStorageScheme::Err = iceberg::error::Error
+pub fn iceberg_storage_opendal::AzureStorageScheme::from_str(s: &str) -> iceberg::error::Result<Self>
+impl serde_core::ser::Serialize for iceberg_storage_opendal::AzureStorageScheme
+pub fn iceberg_storage_opendal::AzureStorageScheme::serialize<__S>(&self, __serializer: __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for iceberg_storage_opendal::AzureStorageScheme
+pub fn iceberg_storage_opendal::AzureStorageScheme::deserialize<__D>(__deserializer: __D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 pub enum iceberg_storage_opendal::OpenDalStorage
 pub iceberg_storage_opendal::OpenDalStorage::Azdls
 pub iceberg_storage_opendal::OpenDalStorage::Azdls::config: alloc::sync::Arc<opendal_service_azdls::config::AzdlsConfig>
+pub iceberg_storage_opendal::OpenDalStorage::Azdls::customized_credential_load: core::option::Option<iceberg_storage_opendal::CustomAzdlsCredentialLoader>
 pub iceberg_storage_opendal::OpenDalStorage::Gcs
 pub iceberg_storage_opendal::OpenDalStorage::Gcs::config: alloc::sync::Arc<opendal_service_gcs::config::GcsConfig>
 pub iceberg_storage_opendal::OpenDalStorage::Gcs::customized_credential_load: core::option::Option<iceberg_storage_opendal::CustomGcsCredentialLoader>
@@ -40,6 +65,7 @@ impl<'de> serde_core::de::Deserialize<'de> for iceberg_storage_opendal::OpenDalS
 pub fn iceberg_storage_opendal::OpenDalStorage::deserialize<__D>(__deserializer: __D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 pub enum iceberg_storage_opendal::OpenDalStorageFactory
 pub iceberg_storage_opendal::OpenDalStorageFactory::Azdls
+pub iceberg_storage_opendal::OpenDalStorageFactory::Azdls::customized_credential_load: core::option::Option<iceberg_storage_opendal::CustomAzdlsCredentialLoader>
 pub iceberg_storage_opendal::OpenDalStorageFactory::Fs
 pub iceberg_storage_opendal::OpenDalStorageFactory::Gcs
 pub iceberg_storage_opendal::OpenDalStorageFactory::Gcs::customized_credential_load: core::option::Option<iceberg_storage_opendal::CustomGcsCredentialLoader>
@@ -65,6 +91,13 @@ impl core::clone::Clone for iceberg_storage_opendal::CustomAwsCredentialLoader
 pub fn iceberg_storage_opendal::CustomAwsCredentialLoader::clone(&self) -> Self
 impl core::fmt::Debug for iceberg_storage_opendal::CustomAwsCredentialLoader
 pub fn iceberg_storage_opendal::CustomAwsCredentialLoader::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct iceberg_storage_opendal::CustomAzdlsCredentialLoader(_)
+impl iceberg_storage_opendal::CustomAzdlsCredentialLoader
+pub fn iceberg_storage_opendal::CustomAzdlsCredentialLoader::new(provider: impl reqsign_core::api::ProvideCredential<Credential = reqsign_azure_storage::credential::Credential> + 'static) -> Self
+impl core::clone::Clone for iceberg_storage_opendal::CustomAzdlsCredentialLoader
+pub fn iceberg_storage_opendal::CustomAzdlsCredentialLoader::clone(&self) -> Self
+impl core::fmt::Debug for iceberg_storage_opendal::CustomAzdlsCredentialLoader
+pub fn iceberg_storage_opendal::CustomAzdlsCredentialLoader::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct iceberg_storage_opendal::CustomGcsCredentialLoader(_)
 impl iceberg_storage_opendal::CustomGcsCredentialLoader
 pub fn iceberg_storage_opendal::CustomGcsCredentialLoader::new(provider: impl reqsign_core::api::ProvideCredential<Credential = reqsign_google::credential::Credential> + 'static) -> Self
@@ -94,6 +127,7 @@ pub fn iceberg_storage_opendal::OpenDalResolvingStorage::deserialize<__D>(__dese
 pub struct iceberg_storage_opendal::OpenDalResolvingStorageFactory
 impl iceberg_storage_opendal::OpenDalResolvingStorageFactory
 pub fn iceberg_storage_opendal::OpenDalResolvingStorageFactory::new() -> Self
+pub fn iceberg_storage_opendal::OpenDalResolvingStorageFactory::with_azdls_credential_loader(self, loader: iceberg_storage_opendal::CustomAzdlsCredentialLoader) -> Self
 pub fn iceberg_storage_opendal::OpenDalResolvingStorageFactory::with_gcs_credential_loader(self, loader: iceberg_storage_opendal::CustomGcsCredentialLoader) -> Self
 pub fn iceberg_storage_opendal::OpenDalResolvingStorageFactory::with_s3_credential_loader(self, loader: iceberg_storage_opendal::CustomAwsCredentialLoader) -> Self
 impl core::clone::Clone for iceberg_storage_opendal::OpenDalResolvingStorageFactory
