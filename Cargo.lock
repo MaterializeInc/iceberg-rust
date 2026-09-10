@@ -4046,6 +4046,7 @@ dependencies = [
  "opendal",
  "reqsign-aws-v4",
  "reqsign-core",
+ "reqsign-google",
  "reqwest 0.12.28",
  "serde",
  "tokio",
