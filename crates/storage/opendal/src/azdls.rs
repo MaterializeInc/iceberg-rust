@@ -366,7 +366,10 @@ mod tests {
 
     use opendal::services::AzdlsConfig;
 
-    use super::{AzureStoragePath, AzureStorageScheme, azdls_config_parse, azdls_create_operator};
+    use super::{
+        AzdlsCredential, AzureStoragePath, AzureStorageScheme, CustomAzdlsCredentialLoader,
+        ProvideCredential, azdls_config_parse, azdls_create_operator,
+    };
 
     #[test]
     fn test_azdls_config_parse() {
@@ -523,6 +526,82 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[derive(Debug)]
+    struct StubProvider;
+
+    impl ProvideCredential for StubProvider {
+        type Credential = AzdlsCredential;
+
+        async fn provide_credential(
+            &self,
+            _ctx: &reqsign_core::Context,
+        ) -> reqsign_core::Result<Option<Self::Credential>> {
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn test_azdls_create_operator_accepts_credential_loader() {
+        let config = AzdlsConfig {
+            account_name: Some("myaccount".to_string()),
+            endpoint: Some("https://myaccount.dfs.core.windows.net".to_string()),
+            ..Default::default()
+        };
+        let loader = Some(CustomAzdlsCredentialLoader::new(StubProvider));
+
+        let (op, relative_path) = azdls_create_operator(
+            "abfss://myfs@myaccount.dfs.core.windows.net/path/to/file.parquet",
+            &loader,
+            &config,
+        )
+        .expect("operator builds with a custom credential loader");
+
+        // Installing a loader must not disturb filesystem or path resolution.
+        assert_eq!(op.info().name(), "myfs");
+        assert_eq!(relative_path, "/path/to/file.parquet");
+    }
+
+    #[tokio::test]
+    async fn test_azdls_credential_loader_replaces_configured_credentials() {
+        // ADLS replaces the provider chain rather than prepending to it, so a loader that
+        // yields nothing must fail signing outright rather than falling back to the account key
+        // below. Signing with that key instead would mean the loader was never installed, and
+        // the request would get far enough to fail for some other reason.
+        let config = AzdlsConfig {
+            account_name: Some("myaccount".to_string()),
+            account_key: Some("dGVzdGtleQ==".to_string()),
+            endpoint: Some("https://myaccount.dfs.core.windows.net".to_string()),
+            ..Default::default()
+        };
+        let loader = Some(CustomAzdlsCredentialLoader::new(StubProvider));
+
+        let (op, relative_path) = azdls_create_operator(
+            "abfss://myfs@myaccount.dfs.core.windows.net/path/to/file.parquet",
+            &loader,
+            &config,
+        )
+        .expect("operator builds with a custom credential loader");
+
+        let err = op
+            .exists(relative_path)
+            .await
+            .expect_err("a loader that yields nothing must not fall back to the account key");
+        assert!(
+            err.to_string().contains("signing credential"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_custom_azdls_credential_loader_debug_is_redacted() {
+        let loader = CustomAzdlsCredentialLoader::new(StubProvider);
+        assert_eq!(
+            format!("{loader:?}"),
+            "CustomAzdlsCredentialLoader { .. }",
+            "the loader's Debug must not reach into the provider it wraps"
+        );
     }
 
     #[test]
