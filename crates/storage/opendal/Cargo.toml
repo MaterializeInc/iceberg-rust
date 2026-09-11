@@ -39,7 +39,11 @@ opendal-all = [
   "opendal-hf",
 ]
 
-opendal-azdls = ["opendal/services-azdls", "reqsign-azure-storage", "reqsign-core"]
+opendal-azdls = [
+  "opendal/services-azdls",
+  "reqsign-azure-storage",
+  "reqsign-core",
+]
 opendal-fs = ["opendal/services-fs"]
 opendal-gcs = ["opendal/services-gcs", "reqsign-google", "reqsign-core"]
 opendal-hf = ["opendal/services-hf"]
