@@ -46,7 +46,7 @@ use utils::from_opendal_error;
 cfg_if! {
     if #[cfg(feature = "opendal-azdls")] {
         mod azdls;
-        use azdls::*;
+        pub use azdls::*;
         use opendal::services::AzdlsConfig;
     }
 }
@@ -98,11 +98,16 @@ cfg_if! {
 }
 
 /// Trait for types that can asynchronously supply credentials to a custom credential
-/// loader, such as [`CustomAwsCredentialLoader`] or [`CustomGcsCredentialLoader`].
+/// loader, including [`CustomAwsCredentialLoader`], [`CustomGcsCredentialLoader`],
+/// and [`CustomAzdlsCredentialLoader`].
 ///
 /// Downstream implementors must name the trait through this re-export: a loader built
 /// against a differently-versioned `reqsign-core` will not satisfy the bound.
-#[cfg(any(feature = "opendal-s3", feature = "opendal-gcs"))]
+#[cfg(any(
+    feature = "opendal-s3",
+    feature = "opendal-gcs",
+    feature = "opendal-azdls"
+))]
 pub use reqsign_core::ProvideCredential;
 
 mod resolving;
@@ -139,7 +144,11 @@ pub enum OpenDalStorageFactory {
     Oss,
     /// Azure Data Lake Storage factory.
     #[cfg(feature = "opendal-azdls")]
-    Azdls,
+    Azdls {
+        /// Custom AZDLS credential loader.
+        #[serde(skip)]
+        customized_credential_load: Option<azdls::CustomAzdlsCredentialLoader>,
+    },
     /// HuggingFace Hub storage factory.
     #[cfg(feature = "opendal-hf")]
     Hf,
@@ -175,8 +184,11 @@ impl StorageFactory for OpenDalStorageFactory {
                 config: oss_config_parse(config.props().clone())?.into(),
             })),
             #[cfg(feature = "opendal-azdls")]
-            OpenDalStorageFactory::Azdls => Ok(Arc::new(OpenDalStorage::Azdls {
+            OpenDalStorageFactory::Azdls {
+                customized_credential_load,
+            } => Ok(Arc::new(OpenDalStorage::Azdls {
                 config: azdls_config_parse(config.props().clone())?.into(),
+                customized_credential_load: customized_credential_load.clone(),
             })),
             #[cfg(feature = "opendal-hf")]
             OpenDalStorageFactory::Hf => Ok(Arc::new(OpenDalStorage::Hf {
@@ -251,6 +263,9 @@ pub enum OpenDalStorage {
     Azdls {
         /// Azure DLS configuration.
         config: Arc<AzdlsConfig>,
+        /// Custom AZDLS credential loader.
+        #[serde(skip)]
+        customized_credential_load: Option<azdls::CustomAzdlsCredentialLoader>,
     },
     /// HuggingFace Hub storage variant.
     ///
@@ -262,6 +277,22 @@ pub enum OpenDalStorage {
         /// HuggingFace Hub configuration (token + endpoint).
         config: Arc<HfConfig>,
     },
+}
+
+/// Installs OpenDAL's default HTTP transport, once per process.
+///
+/// As of OpenDAL 0.59 the transport is opt-in: without one, every request to an HTTP-backed
+/// service fails with `ConfigInvalid` rather than at construction time. OpenDAL's own
+/// pre-`main` constructor would install it, but only under `auto-register-services`, and its
+/// documentation warns that linkers may drop that constructor when OpenDAL is linked as a
+/// `staticlib`, which is how the Python bindings consume it. Installing here instead keeps the
+/// behavior identical across every consumer.
+///
+/// `install_default` is first-installed-wins, so an application that installs its own transport
+/// before touching a `FileIO` keeps it.
+fn install_http_transport() {
+    static INSTALL: std::sync::Once = std::sync::Once::new();
+    INSTALL.call_once(opendal::install_default);
 }
 
 impl OpenDalStorage {
@@ -282,6 +313,8 @@ impl OpenDalStorage {
         &self,
         path: &'a impl AsRef<str>,
     ) -> Result<(Operator, &'a str)> {
+        install_http_transport();
+
         let path = path.as_ref();
         let (operator, relative_path): (Operator, &str) = match self {
             #[cfg(feature = "opendal-memory")]
@@ -357,7 +390,10 @@ impl OpenDalStorage {
                 }
             }
             #[cfg(feature = "opendal-azdls")]
-            OpenDalStorage::Azdls { config } => azdls_create_operator(path, config)?,
+            OpenDalStorage::Azdls {
+                config,
+                customized_credential_load,
+            } => azdls_create_operator(path, customized_credential_load, config)?,
             #[cfg(feature = "opendal-hf")]
             OpenDalStorage::Hf { config } => hf_config_build(config, path)?,
             #[cfg(all(
@@ -475,7 +511,7 @@ impl OpenDalStorage {
                 }
             }
             #[cfg(feature = "opendal-azdls")]
-            OpenDalStorage::Azdls { config } => {
+            OpenDalStorage::Azdls { config, .. } => {
                 let azure_path = path.parse::<AzureStoragePath>()?;
                 match_path_with_config(&azure_path, config)?;
                 let relative_path_len = azure_path.path.len();
@@ -782,6 +818,7 @@ mod tests {
                 endpoint: Some("https://myaccount.dfs.core.windows.net".to_string()),
                 ..Default::default()
             }),
+            customized_credential_load: None,
         };
 
         assert_eq!(

@@ -92,6 +92,8 @@ struct CustomCredentialLoaders {
     s3: Option<CustomAwsCredentialLoader>,
     #[cfg(feature = "opendal-gcs")]
     gcs: Option<CustomGcsCredentialLoader>,
+    #[cfg(feature = "opendal-azdls")]
+    azdls: Option<crate::azdls::CustomAzdlsCredentialLoader>,
 }
 
 /// A resolving storage factory that creates [`OpenDalResolvingStorage`] instances.
@@ -143,6 +145,16 @@ impl OpenDalResolvingStorageFactory {
     #[cfg(feature = "opendal-gcs")]
     pub fn with_gcs_credential_loader(mut self, loader: CustomGcsCredentialLoader) -> Self {
         self.loaders.gcs = Some(loader);
+        self
+    }
+
+    /// Set a custom AZDLS credential loader for AZDLS storage.
+    #[cfg(feature = "opendal-azdls")]
+    pub fn with_azdls_credential_loader(
+        mut self,
+        loader: crate::azdls::CustomAzdlsCredentialLoader,
+    ) -> Self {
+        self.loaders.azdls = Some(loader);
         self
     }
 }
@@ -210,6 +222,7 @@ impl OpenDalResolvingStorage {
                 let config = crate::azdls::azdls_config_parse(self.props.clone())?;
                 Ok(OpenDalStorage::Azdls {
                     config: Arc::new(config),
+                    customized_credential_load: self.loaders.azdls.clone(),
                 })
             }
             #[cfg(feature = "opendal-fs")]

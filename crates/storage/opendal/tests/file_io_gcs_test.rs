@@ -202,6 +202,11 @@ mod tests {
     /// succeeds, signed with the credential the loader was supposed to displace.
     #[tokio::test]
     async fn test_opendal_gcs_chain_falls_through_to_the_config_token() {
+        // Every other test here reaches OpenDAL through `FileIO`, which installs the HTTP
+        // transport on the way past. This one builds its operator directly, so it has to do
+        // that itself rather than depend on a sibling test having run first.
+        opendal::install_default();
+
         let (endpoint, authorization) = serve_one_request().await;
 
         // Disabling the ambient sources leaves the chain with exactly two entries that can
@@ -215,8 +220,7 @@ mod tests {
 
         let chain = ProvideCredentialChain::new().push(MockCredentialLoader(None));
         let operator = Operator::new(cfg.into_builder().credential_provider_chain(chain))
-            .expect("operator builds")
-            .finish();
+            .expect("operator builds");
 
         assert!(
             !operator.exists("any").await.expect("the request is signed"),
