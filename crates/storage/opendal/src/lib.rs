@@ -98,7 +98,8 @@ cfg_if! {
 }
 
 /// Trait for types that can asynchronously supply credentials to a custom credential
-/// loader, such as [`CustomAwsCredentialLoader`] or [`CustomGcsCredentialLoader`].
+/// loader, including [`CustomAwsCredentialLoader`], [`CustomGcsCredentialLoader`],
+/// and [`CustomAzdlsCredentialLoader`].
 ///
 /// Downstream implementors must name the trait through this re-export: a loader built
 /// against a differently-versioned `reqsign-core` will not satisfy the bound.
