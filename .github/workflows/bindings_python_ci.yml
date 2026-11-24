@@ -22,6 +22,10 @@ on:
     branches:
       - main
   pull_request:
+    # bindings/python is excluded from the workspace on this branch, since
+    # Materialize doesn't consume it.
+    branches-ignore:
+      - mz_v0.10.x
     paths:
       - '**'                                       # Include all files and directories in the repository by default.
       - '!.github/ISSUE_TEMPLATE/**'               # Exclude files and directories that don't impact tests or code like templates, metadata, and documentation.

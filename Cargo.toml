@@ -17,15 +17,21 @@
 
 [workspace]
 members = [
-  "bindings/python",
   "crates/catalog/*",
   "crates/examples",
   "crates/iceberg",
   "crates/integration_tests",
   "crates/integrations/*",
-  "crates/sqllogictest",
   "crates/storage/*",
   "crates/test_utils",
+]
+# Materialize doesn't consume these, and they would hold the workspace back on
+# an older Arrow until DataFusion and pyo3 are bumped to match.
+exclude = [
+  "bindings/python",
+  "crates/integrations/datafusion",
+  "crates/integrations/playground",
+  "crates/sqllogictest",
 ]
 resolver = "2"
 
