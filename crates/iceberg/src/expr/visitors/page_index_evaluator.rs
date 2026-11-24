@@ -991,7 +991,9 @@ mod tests {
             .clone()
             .into_builder();
         builder.allocate_offset_indexes(1, 2);
-        builder.put_offset_index(page_index.offset_index(0, 1).unwrap().clone(), 0, 1);
+        builder
+            .try_put_offset_index(page_index.offset_index(0, 1).unwrap().clone(), 0, 1)
+            .unwrap();
         let metadata = metadata
             .as_ref()
             .clone()
