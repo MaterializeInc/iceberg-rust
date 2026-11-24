@@ -90,22 +90,14 @@ impl PositionDeleteWriterConfig {
     /// - pos: long (field id 2147483545)
     pub fn arrow_schema() -> ArrowSchemaRef {
         Arc::new(ArrowSchema::new(vec![
-            Field::new("file_path", DataType::Utf8, false).with_metadata(
-                [(
-                    PARQUET_FIELD_ID_META_KEY.to_string(),
-                    "2147483546".to_string(),
-                )]
-                .into_iter()
-                .collect(),
-            ),
-            Field::new("pos", DataType::Int64, false).with_metadata(
-                [(
-                    PARQUET_FIELD_ID_META_KEY.to_string(),
-                    "2147483545".to_string(),
-                )]
-                .into_iter()
-                .collect(),
-            ),
+            Field::new("file_path", DataType::Utf8, false).with_metadata([(
+                PARQUET_FIELD_ID_META_KEY.to_string(),
+                "2147483546".to_string(),
+            )]),
+            Field::new("pos", DataType::Int64, false).with_metadata([(
+                PARQUET_FIELD_ID_META_KEY.to_string(),
+                "2147483545".to_string(),
+            )]),
         ]))
     }
 }
